@@ -194,6 +194,10 @@ public class ApplicantAuthService {
 
         String encodedPassword = passwordEncoder.encode(request.newPassword());
         applicant.updatePassword(encodedPassword);
+
+        // 비밀번호 변경 후 기존 세션/토큰 무효화 (액세스 토큰 버전 증가 + 리프레시 토큰 폐기)
+        tokenVersionRepository.increaseVersion(applicant.getPublicId(), applicant.getRole());
+        refreshTokenRepository.deleteByPublicId(applicant.getPublicId(), applicant.getRole());
     }
 
     @Transactional

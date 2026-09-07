@@ -791,6 +791,8 @@ public class ApplicantAuthServiceTest {
         verify(emailVerificationRepository, times(1)).findAndDeleteVerifiedToken("verification-token");
         verify(passwordEncoder).encode("Pass1234!");
         assertThat(applicant.getPassword()).isEqualTo("encoded-new");
+        verify(tokenVersionRepository).increaseVersion(applicant.getPublicId(), UserRole.APPLICANT);
+        verify(refreshTokenRepository).deleteByPublicId(applicant.getPublicId(), UserRole.APPLICANT);
     }
 
     @Test
