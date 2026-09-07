@@ -25,13 +25,17 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class InterviewSessionService {
 
-    private static final int TOTAL_COUNT = 1;
     private static final int REAPPLY_DAYS = 31;
 
     /** 재지원 D-day 계산 기준 타임존(KST). 서버 기본 TZ에 의존하지 않기 위해 고정한다. */
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
-    /** 면접이 "완료"된 것으로 간주하는 상태 집합(재지원 대기 대상) */
+    /**
+     * 면접이 "완료"된 것으로 간주하는 상태 집합(재지원 대기 대상).
+     *
+     * <p>FINISHED~REPORT_COMPLETED만 완료로 본다. FAILED(재처리 초과/복구 불가)는 완료로 보지 않아
+     * 재시도(재응시)를 허용한다. 진행 중 상태(STARTED/WAITING_FOR_QUESTION/QUESTION_READY)도 완료가 아니다.
+     */
     private static final Set<InterviewSessionStatus> COMPLETED_STATUSES = EnumSet.of(
             InterviewSessionStatus.FINISHED,
             InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED,
@@ -79,7 +83,7 @@ public class InterviewSessionService {
                         applicant, COMPLETED_STATUSES);
 
         if (completedSession.isEmpty()) {
-            return new InterviewRemainingResponse(TOTAL_COUNT, 1, 0, null);
+            return InterviewRemainingResponse.available();
         }
 
         // 저장된 세션 시작 시각(서버 로컬)을 KST 날짜로 변환해 today(KST)와 같은 기준으로 비교한다.
@@ -91,10 +95,10 @@ public class InterviewSessionService {
         LocalDate today = LocalDate.now(KST);
 
         if (!today.isBefore(reapplyDate)) {
-            return new InterviewRemainingResponse(TOTAL_COUNT, 1, 0, null);
+            return InterviewRemainingResponse.available();
         }
 
         long dday = ChronoUnit.DAYS.between(today, reapplyDate);
-        return new InterviewRemainingResponse(TOTAL_COUNT, 0, dday, reapplyDate);
+        return InterviewRemainingResponse.waiting(dday, reapplyDate);
     }
 }
