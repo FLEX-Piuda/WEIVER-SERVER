@@ -114,19 +114,23 @@ public class InterviewFlowService {
     }
 
     /**
-     * 진행 중인 면접 세션을 수동 종료한다(대시보드 "면접 결과 제출하기").
-     * 종료 질문 수신 분기와 동일하게 FINISHED → transcript 저장 요청 → TRANSCRIPT_SAVE_REQUESTED로 전이한다.
+     * 종료 대기(FINISHED) 상태의 면접을 수동 제출한다("면접 결과 제출하기").
+     * transcript 저장 요청을 발행하고 TRANSCRIPT_SAVE_REQUESTED로 전이한다.
      */
     public void submitInterview(UUID interviewSessionId, String applicantPublicId) {
         InterviewSession session = getSessionForApplicant(interviewSessionId, applicantPublicId);
-        if (isAnswerClosed(session.getSessionStatus())) {
+        InterviewSessionStatus status = session.getSessionStatus();
+
+        // 이미 제출된(또는 종료 처리 진행/완료/실패) 면접이면 재제출 불가
+        if (isSubmitted(status)) {
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED);
         }
-        if (!hasAnsweredTurn(session)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "제출할 면접 응답 내역이 없습니다.");
+        // 아직 면접 Q&A가 끝나지 않았으면(진행 중) 제출 불가
+        if (status != InterviewSessionStatus.FINISHED) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "아직 종료되지 않은 면접입니다.");
         }
 
-        finishAndRequestTranscriptSave(session);
+        requestTranscriptSave(session);
     }
 
     /**
@@ -148,7 +152,12 @@ public class InterviewFlowService {
         }
 
         if (isEndQuestion(data.nextQuestionCode())) {
-            finishAndRequestTranscriptSave(session);
+            // 면접 Q&A 종료 표시까지만. 실제 제출(transcript 저장 요청)은 사용자가 submitInterview로 수동 트리거한다.
+            session.updateStatus(InterviewSessionStatus.FINISHED);
+            sendInterviewMessage(
+                    session,
+                    InterviewWebSocketMessageResponse.interviewFinished(session.getInterviewSessionId())
+            );
             return;
         }
 
@@ -220,18 +229,11 @@ public class InterviewFlowService {
     }
 
     /**
-     * 면접을 종료 처리한다: FINISHED → transcript 저장 요청 발행 → TRANSCRIPT_SAVE_REQUESTED로 전이하고
-     * WebSocket으로 종료를 통지한다. 수동 종료(submitInterview)와 종료 질문(E_) 수신 분기가 공유한다.
+     * 종료 대기(FINISHED) 면접의 제출을 처리한다: transcript 저장 요청 발행 → TRANSCRIPT_SAVE_REQUESTED로 전이.
      */
-    private void finishAndRequestTranscriptSave(InterviewSession session) {
-        session.updateStatus(InterviewSessionStatus.FINISHED);
+    private void requestTranscriptSave(InterviewSession session) {
         publishTranscriptSaveRequested(session);
         session.updateStatus(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
-        // REST 호출자(수동 종료)는 WS 구독이 없을 수 있으나, 다른 탭/기기의 진행 중 WS 세션에 종료를 통지하는 용도.
-        sendInterviewMessage(
-                session,
-                InterviewWebSocketMessageResponse.interviewFinished(session.getInterviewSessionId())
-        );
     }
 
     /**
@@ -459,10 +461,15 @@ public class InterviewFlowService {
                 || status == InterviewSessionStatus.FAILED;
     }
 
-    private boolean hasAnsweredTurn(InterviewSession session) {
-        return session.getTranscript().stream()
-                .filter(Objects::nonNull)
-                .anyMatch(turn -> StringUtils.hasText(turn.answer()));
+    /**
+     * 이미 제출된(또는 종료 처리 진행/완료/실패) 상태인지 판정한다. FINISHED(제출 대기)는 포함하지 않는다.
+     */
+    private boolean isSubmitted(InterviewSessionStatus status) {
+        return status == InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED
+                || status == InterviewSessionStatus.TRANSCRIPT_SAVED
+                || status == InterviewSessionStatus.REPORT_REQUESTED
+                || status == InterviewSessionStatus.REPORT_COMPLETED
+                || status == InterviewSessionStatus.FAILED;
     }
 
     private boolean isTranscriptAlreadyProcessed(InterviewSessionStatus status) {

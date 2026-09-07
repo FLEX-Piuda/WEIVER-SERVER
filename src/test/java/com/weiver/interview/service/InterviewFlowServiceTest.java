@@ -242,8 +242,9 @@ class InterviewFlowServiceTest {
     }
 
     @Test
-    @DisplayName("E_ 질문이 생성되면 면접 종료 메시지를 보내고 transcript 저장 요청 이벤트를 발행한다")
-    void handleQuestionGenerated_PublishesTranscriptSaveRequestForEndQuestion() {
+    @DisplayName("E_ 질문이 생성되면 면접을 FINISHED로만 표시하고 종료 메시지를 보내며 transcript 저장 요청은 발행하지 않는다")
+    void handleQuestionGenerated_MarksFinishedWithoutTranscriptSaveRequestForEndQuestion() {
+        // given
         Applicant applicant = applicant();
         UUID sessionId = UUID.randomUUID();
         InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.WAITING_FOR_QUESTION,
@@ -254,6 +255,7 @@ class InterviewFlowServiceTest {
 
         given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
 
+        // when
         interviewFlowService.handleQuestionGenerated(new InterviewQuestionGeneratedData(
                 1L,
                 sessionId,
@@ -262,20 +264,12 @@ class InterviewFlowServiceTest {
                 "면접이 종료되었습니다."
         ));
 
-        assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
+        // then
+        assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.FINISHED);
         assertThat(session.getTranscript()).hasSize(3);
 
-        ArgumentCaptor<EventEnvelope<?>> eventCaptor = ArgumentCaptor.forClass(EventEnvelope.class);
-        verify(domainEventPublisher).publishAfterCommit(eventCaptor.capture());
-
-        EventEnvelope<?> envelope = eventCaptor.getValue();
-        assertThat(envelope.eventType()).isEqualTo(EventType.INTERVIEW_TRANSCRIPT_SAVE_REQUESTED);
-        InterviewTranscriptSaveRequestedData data = (InterviewTranscriptSaveRequestedData) envelope.data();
-        assertThat(data.interviewSessionId()).isEqualTo(sessionId);
-        assertThat(data.skillInterview().turns()).hasSize(1);
-        assertThat(data.skillInterview().turns().get(0).answer()).isEqualTo("기술 답변");
-        assertThat(data.cultureInterview().turns()).hasSize(1);
-        assertThat(data.cultureInterview().turns().get(0).question()).isEqualTo("컬처 질문");
+        // 제출은 수동(submitInterview)이므로 종료 질문 수신만으로 저장 요청 이벤트를 발행하지 않는다.
+        verifyNoInteractions(domainEventPublisher);
 
         ArgumentCaptor<InterviewWebSocketMessageResponse> messageCaptor =
                 ArgumentCaptor.forClass(InterviewWebSocketMessageResponse.class);
@@ -421,12 +415,12 @@ class InterviewFlowServiceTest {
     }
 
     @Test
-    @DisplayName("면접 결과 제출 시 진행 중 세션을 FINISHED 후 TRANSCRIPT_SAVE_REQUESTED로 전이하고 저장 요청 이벤트를 발행한다")
-    void submitInterview_FinishesSessionAndPublishesTranscriptSaveRequest() {
+    @DisplayName("종료 대기(FINISHED) 면접을 수동 제출하면 저장 요청 이벤트를 발행하고 TRANSCRIPT_SAVE_REQUESTED로 전이한다")
+    void submitInterview_PublishesTranscriptSaveRequestForFinishedSession() {
         // given
         Applicant applicant = applicant();
         UUID sessionId = UUID.randomUUID();
-        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.QUESTION_READY,
+        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.FINISHED,
                 List.of(
                         new InterviewTurnDTO("S_01_00", 1, "기술 질문", "기술 답변"),
                         new InterviewTurnDTO("C_01_00", 2, "컬처 질문", "컬처 답변")
@@ -450,23 +444,17 @@ class InterviewFlowServiceTest {
         assertThat(data.skillInterview().turns()).hasSize(1);
         assertThat(data.cultureInterview().turns()).hasSize(1);
 
-        ArgumentCaptor<InterviewWebSocketMessageResponse> messageCaptor =
-                ArgumentCaptor.forClass(InterviewWebSocketMessageResponse.class);
-        verify(messagingTemplate).convertAndSendToUser(
-                eq(APPLICANT_PUBLIC_ID),
-                eq("/queue/interviews"),
-                messageCaptor.capture()
-        );
-        assertThat(messageCaptor.getValue().type()).isEqualTo("INTERVIEW_FINISHED");
+        // 종료 통지는 E_ 수신 시점에 이미 나갔으므로 제출 시 추가 WS 통지는 없다.
+        verifyNoInteractions(messagingTemplate);
     }
 
     @Test
-    @DisplayName("이미 종료된 세션의 면접 결과 제출은 INTERVIEW_ALREADY_COMPLETED로 거부한다")
-    void submitInterview_RejectsAlreadyCompletedSession() {
+    @DisplayName("이미 제출된(TRANSCRIPT_SAVE_REQUESTED) 세션의 면접 결과 제출은 INTERVIEW_ALREADY_COMPLETED로 거부한다")
+    void submitInterview_RejectsAlreadySubmittedSession() {
         // given
         Applicant applicant = applicant();
         UUID sessionId = UUID.randomUUID();
-        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.FINISHED, List.of());
+        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED, List.of());
 
         given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
 
@@ -481,49 +469,24 @@ class InterviewFlowServiceTest {
     }
 
     @Test
-    @DisplayName("답변이 하나도 없는 진행 중 세션의 면접 결과 제출은 BAD_REQUEST로 거부하고 상태 전이/이벤트 발행이 없다")
-    void submitInterview_RejectsWhenNoAnsweredTurn() {
+    @DisplayName("아직 종료되지 않은 진행 중 세션의 면접 결과 제출은 BAD_REQUEST로 거부하고 상태 전이/이벤트 발행이 없다")
+    void submitInterview_RejectsWhenNotFinished() {
         // given
         Applicant applicant = applicant();
         UUID sessionId = UUID.randomUUID();
         InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.QUESTION_READY,
-                List.of(
-                        InterviewTurnDTO.questionOnly("S_01_00", 1, "기술 질문"),
-                        new InterviewTurnDTO("C_01_00", 2, "컬처 질문", "   ")
-                ));
+                List.of(new InterviewTurnDTO("S_01_00", 1, "기술 질문", "기술 답변")));
 
         given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
 
         // when & then
         assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("제출할 면접 응답 내역이 없습니다.")
+                .hasMessage("아직 종료되지 않은 면접입니다.")
                 .extracting("code")
                 .isEqualTo(ErrorCode.BAD_REQUEST);
 
         assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.QUESTION_READY);
-        verifyNoInteractions(domainEventPublisher);
-        verifyNoInteractions(messagingTemplate);
-    }
-
-    @Test
-    @DisplayName("transcript가 비어 있는 진행 중 세션의 면접 결과 제출은 BAD_REQUEST로 거부한다")
-    void submitInterview_RejectsWhenTranscriptIsEmpty() {
-        // given
-        Applicant applicant = applicant();
-        UUID sessionId = UUID.randomUUID();
-        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.STARTED, List.of());
-
-        given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
-
-        // when & then
-        assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("제출할 면접 응답 내역이 없습니다.")
-                .extracting("code")
-                .isEqualTo(ErrorCode.BAD_REQUEST);
-
-        assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.STARTED);
         verifyNoInteractions(domainEventPublisher);
         verifyNoInteractions(messagingTemplate);
     }
@@ -534,7 +497,7 @@ class InterviewFlowServiceTest {
         // given
         Applicant applicant = applicant();
         UUID sessionId = UUID.randomUUID();
-        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.QUESTION_READY, List.of());
+        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.FINISHED, List.of());
 
         given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
 
