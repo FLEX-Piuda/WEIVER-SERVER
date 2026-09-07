@@ -420,6 +420,94 @@ class InterviewFlowServiceTest {
         verifyNoInteractions(detailAnalysisReportRepository);
     }
 
+    @Test
+    @DisplayName("면접 결과 제출 시 진행 중 세션을 FINISHED 후 TRANSCRIPT_SAVE_REQUESTED로 전이하고 저장 요청 이벤트를 발행한다")
+    void submitInterview_FinishesSessionAndPublishesTranscriptSaveRequest() {
+        Applicant applicant = applicant();
+        UUID sessionId = UUID.randomUUID();
+        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.QUESTION_READY,
+                List.of(
+                        new InterviewTurnDTO("S_01_00", 1, "기술 질문", "기술 답변"),
+                        new InterviewTurnDTO("C_01_00", 2, "컬처 질문", "컬처 답변")
+                ));
+
+        given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
+
+        interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID);
+
+        assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
+
+        ArgumentCaptor<EventEnvelope<?>> eventCaptor = ArgumentCaptor.forClass(EventEnvelope.class);
+        verify(domainEventPublisher).publishAfterCommit(eventCaptor.capture());
+
+        EventEnvelope<?> envelope = eventCaptor.getValue();
+        assertThat(envelope.eventType()).isEqualTo(EventType.INTERVIEW_TRANSCRIPT_SAVE_REQUESTED);
+        InterviewTranscriptSaveRequestedData data = (InterviewTranscriptSaveRequestedData) envelope.data();
+        assertThat(data.interviewSessionId()).isEqualTo(sessionId);
+        assertThat(data.skillInterview().turns()).hasSize(1);
+        assertThat(data.cultureInterview().turns()).hasSize(1);
+
+        ArgumentCaptor<InterviewWebSocketMessageResponse> messageCaptor =
+                ArgumentCaptor.forClass(InterviewWebSocketMessageResponse.class);
+        verify(messagingTemplate).convertAndSendToUser(
+                eq(APPLICANT_PUBLIC_ID),
+                eq("/queue/interviews"),
+                messageCaptor.capture()
+        );
+        assertThat(messageCaptor.getValue().type()).isEqualTo("INTERVIEW_FINISHED");
+    }
+
+    @Test
+    @DisplayName("이미 종료된 세션의 면접 결과 제출은 INTERVIEW_ALREADY_COMPLETED로 거부한다")
+    void submitInterview_RejectsAlreadyCompletedSession() {
+        Applicant applicant = applicant();
+        UUID sessionId = UUID.randomUUID();
+        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.FINISHED, List.of());
+
+        given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo(ErrorCode.INTERVIEW_ALREADY_COMPLETED);
+
+        verifyNoInteractions(domainEventPublisher);
+        verifyNoInteractions(messagingTemplate);
+    }
+
+    @Test
+    @DisplayName("면접 결과 제출 시 세션 소유자가 아니면 FORBIDDEN으로 거부한다")
+    void submitInterview_RejectsWhenNotOwner() {
+        Applicant applicant = applicant();
+        UUID sessionId = UUID.randomUUID();
+        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.QUESTION_READY, List.of());
+
+        given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, "other-public-id"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verifyNoInteractions(domainEventPublisher);
+        verifyNoInteractions(messagingTemplate);
+    }
+
+    @Test
+    @DisplayName("면접 결과 제출 시 세션이 존재하지 않으면 INTERVIEW_SESSION_NOT_FOUND로 거부한다")
+    void submitInterview_RejectsWhenSessionNotFound() {
+        UUID sessionId = UUID.randomUUID();
+        given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo(ErrorCode.INTERVIEW_SESSION_NOT_FOUND);
+
+        verifyNoInteractions(domainEventPublisher);
+        verifyNoInteractions(messagingTemplate);
+    }
+
     private Applicant applicant() {
         return Applicant.builder()
                 .applicantId(1L)

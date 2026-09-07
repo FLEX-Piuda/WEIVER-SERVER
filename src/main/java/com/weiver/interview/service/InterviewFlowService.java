@@ -114,6 +114,25 @@ public class InterviewFlowService {
     }
 
     /**
+     * 진행 중인 면접 세션을 수동 종료한다(대시보드 "면접 결과 제출하기").
+     * 종료 질문 수신 분기와 동일하게 FINISHED → transcript 저장 요청 → TRANSCRIPT_SAVE_REQUESTED로 전이한다.
+     */
+    public void submitInterview(UUID interviewSessionId, String applicantPublicId) {
+        InterviewSession session = getSessionForApplicant(interviewSessionId, applicantPublicId);
+        if (isAnswerClosed(session.getSessionStatus())) {
+            throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED);
+        }
+
+        session.updateStatus(InterviewSessionStatus.FINISHED);
+        publishTranscriptSaveRequested(session);
+        session.updateStatus(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
+        sendInterviewMessage(
+                session,
+                InterviewWebSocketMessageResponse.interviewFinished(session.getInterviewSessionId())
+        );
+    }
+
+    /**
      * AI가 생성한 질문을 transcript에 멱등 append하고, 종료 질문이면 transcript 저장 요청으로 이어간다.
      */
     public void handleQuestionGenerated(InterviewQuestionGeneratedData data) {
