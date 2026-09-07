@@ -116,6 +116,26 @@ class InterviewErrorReportControllerTest {
     }
 
     @Test
+    @DisplayName("content가 2000자를 초과하면 400 VALIDATION_FAILED를 반환한다")
+    void createErrorReport_ContentExceedsMaxLength() throws Exception {
+        // given
+        UUID sessionId = UUID.randomUUID();
+        String tooLongContent = "가".repeat(2001);
+        InterviewErrorReportRequestDTO request = new InterviewErrorReportRequestDTO(tooLongContent);
+
+        // when, then
+        mockMvc.perform(post(BASE_URL, sessionId)
+                        .with(customAuth(APPLICANT_PUBLIC_ID))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
+
+        then(interviewErrorReportService).should(never())
+                .createErrorReport(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("미인증 사용자가 요청하면 401 UNAUTHORIZED를 반환한다")
     void createErrorReport_Unauthorized() throws Exception {
         // given
