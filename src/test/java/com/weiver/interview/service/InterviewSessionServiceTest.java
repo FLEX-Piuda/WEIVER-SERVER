@@ -9,6 +9,7 @@ import com.weiver.interview.type.InterviewSessionStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,8 +25,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
 class InterviewSessionServiceTest {
@@ -163,5 +164,40 @@ class InterviewSessionServiceTest {
         assertThat(response.remainingCount()).isZero();
         assertThat(response.reapplyDDay()).isEqualTo(1);
         assertThat(response.reapplyAvailableDate()).isEqualTo(expectedReapplyDate);
+    }
+
+    @Test
+    @DisplayName("FINISHED(제출 대기) 세션만 있으면 아직 제출 전이라 완료 세션 없음으로 취급되어 면접 가능(remainingCount 1)이다")
+    void getRemainingInterview_FinishedButNotSubmitted() {
+        // given
+        // 리포지토리 조회는 COMPLETED_STATUSES IN 조건이라 FINISHED 세션은 조회되지 않는다.
+        // 서비스가 넘기는 상태 집합에 FINISHED가 빠지고 제출 상태만 포함됨을 함께 검증한다.
+        given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
+        given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class)))
+                .willReturn(Optional.empty());
+
+        // when
+        InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
+
+        // then
+        assertThat(response.totalCount()).isEqualTo(1);
+        assertThat(response.remainingCount()).isEqualTo(1);
+        assertThat(response.reapplyDDay()).isZero();
+        assertThat(response.reapplyAvailableDate()).isNull();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Collection<InterviewSessionStatus>> statusesCaptor =
+                ArgumentCaptor.forClass(Collection.class);
+        then(interviewSessionRepository).should()
+                .findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
+                        any(Applicant.class), statusesCaptor.capture());
+        assertThat(statusesCaptor.getValue())
+                .doesNotContain(InterviewSessionStatus.FINISHED)
+                .contains(
+                        InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED,
+                        InterviewSessionStatus.TRANSCRIPT_SAVED,
+                        InterviewSessionStatus.REPORT_REQUESTED,
+                        InterviewSessionStatus.REPORT_COMPLETED);
     }
 }

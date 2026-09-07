@@ -33,11 +33,15 @@ public class InterviewSessionService {
     /**
      * 면접이 "완료"된 것으로 간주하는 상태 집합(재지원 대기 대상).
      *
-     * <p>FINISHED~REPORT_COMPLETED만 완료로 본다. FAILED(재처리 초과/복구 불가)는 완료로 보지 않아
-     * 재시도(재응시)를 허용한다. 진행 중 상태(STARTED/WAITING_FOR_QUESTION/QUESTION_READY)도 완료가 아니다.
+     * <p>면접 결과 제출이 자동에서 수동으로 바뀌면서 FINISHED는 "제출 완료"가 아니라 "면접 Q&A 종료 =
+     * 제출 대기" 상태다. 따라서 FINISHED(제출 대기)는 아직 제출되지 않았으므로 완료(1회 소진)로 보지 않고,
+     * 실제 제출(TRANSCRIPT_SAVE_REQUESTED) 이후부터 완료로 집계한다. FINISHED만 하고 제출하지 않은
+     * 사용자는 소진으로 치지 않는다.
+     *
+     * <p>FAILED(재처리 초과/복구 불가)는 완료로 보지 않아 재시도(재응시)를 허용한다. 진행 중 상태
+     * (STARTED/WAITING_FOR_QUESTION/QUESTION_READY)도 완료가 아니다.
      */
     private static final Set<InterviewSessionStatus> COMPLETED_STATUSES = EnumSet.of(
-            InterviewSessionStatus.FINISHED,
             InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED,
             InterviewSessionStatus.TRANSCRIPT_SAVED,
             InterviewSessionStatus.REPORT_REQUESTED,
