@@ -69,24 +69,7 @@ public class ApplicantAuthService {
                     throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
                 });
 
-        if (testEmailBypassEnabled && isTestEmail(email)) {
-            emailVerificationRepository.deleteCode(email);
-            emailVerificationRepository.deleteAttemptCount(email);
-            return;
-        }
-
-        String code = codeGenerator.generateCode();
-
-        emailVerificationRepository.deleteAttemptCount(email);
-        emailVerificationRepository.saveCode(email, code, EMAIL_CODE_TTL);
-
-        try {
-            emailVerificationService.sendVerificationCode(email, code);
-        } catch (Exception e) {
-            log.warn("[EmailVerification] 인증번호 메일 발송 실패 email={} cause={}", email, e.toString());
-            emailVerificationRepository.deleteCode(email);
-            throw new BusinessException(ErrorCode.EMAIL_SEND_FAILED);
-        }
+        issueAndSendVerificationCode(email, "[EmailVerification]");
     }
 
     public void sendPasswordResetCode(ApplicantEmailSendRequestDTO request) {
@@ -101,6 +84,14 @@ public class ApplicantAuthService {
             return;
         }
 
+        issueAndSendVerificationCode(email, "[PasswordReset]");
+    }
+
+    /**
+     * 인증번호를 발급하고 이메일로 발송하는 공통 로직.
+     * 사전조건(가입 여부 검사 등)은 호출부에서 처리한 뒤 진입한다.
+     */
+    private void issueAndSendVerificationCode(String email, String logPrefix) {
         if (testEmailBypassEnabled && isTestEmail(email)) {
             emailVerificationRepository.deleteCode(email);
             emailVerificationRepository.deleteAttemptCount(email);
@@ -115,7 +106,7 @@ public class ApplicantAuthService {
         try {
             emailVerificationService.sendVerificationCode(email, code);
         } catch (Exception e) {
-            log.warn("[PasswordReset] 인증번호 메일 발송 실패 email={} cause={}", email, e.toString());
+            log.warn("{} 인증번호 메일 발송 실패 email={} cause={}", logPrefix, email, e.toString());
             emailVerificationRepository.deleteCode(email);
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAILED);
         }
