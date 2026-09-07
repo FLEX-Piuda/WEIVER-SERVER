@@ -18,7 +18,7 @@ public class Inquiry extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "inquiry_id")
-    private Long id;
+    private Long inquiryId;
 
     @Builder.Default
     @Column(name = "public_id", nullable = false, unique = true, updatable = false)
