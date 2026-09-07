@@ -4,6 +4,7 @@ import com.weiver.auth.dto.request.ApplicantEmailSendRequestDTO;
 import com.weiver.auth.dto.request.ApplicantEmailVerifyRequestDTO;
 import com.weiver.auth.dto.request.ApplicantLoginRequestDTO;
 import com.weiver.auth.dto.request.ApplicantPasswordChangeRequestDTO;
+import com.weiver.auth.dto.request.ApplicantPasswordUpdateRequestDTO;
 import com.weiver.auth.dto.request.ApplicantSignupCompleteRequestDTO;
 import com.weiver.auth.dto.request.ApplicantSignupInitRequestDTO;
 import com.weiver.auth.dto.response.ApplicantEmailVerifyResponseDTO;
@@ -220,6 +221,29 @@ public class ApplicantAuthController {
             ApplicantPasswordChangeRequestDTO requestDTO
     ) {
         applicantAuthService.changePassword(requestDTO);
+
+        return ResponseEntity.ok(ApiResponse.success(200, null, "비밀번호 변경에 성공했습니다."));
+    }
+
+    @Operation(
+            summary = "로그인 상태 비밀번호 변경",
+            description = "현재 로그인한 구직자가 마이페이지 계정 설정에서 새 비밀번호로 변경합니다.<br>" +
+                    "이메일 인증 없이 현재 세션으로 대상을 특정하며, 변경 후에도 로그인 세션을 유지합니다.<br>" +
+                    "Authorization Header에 Bearer Access Token이 필요합니다."
+    )
+    @SecurityRequirement(name = "bearerAuth")
+    @PatchMapping("/me/password")
+    public ResponseEntity<ApiResponse<Void>> changeMyPassword(
+            @Parameter(hidden = true)
+            @AuthenticationPrincipal AuthenticatedPrincipal principal,
+
+            @RequestBody
+            @Valid
+            ApplicantPasswordUpdateRequestDTO requestDTO
+    ) {
+        if (principal == null) throw new BusinessException(ErrorCode.UNAUTHORIZED);
+
+        applicantAuthService.changeMyPassword(principal.publicId(), requestDTO);
 
         return ResponseEntity.ok(ApiResponse.success(200, null, "비밀번호 변경에 성공했습니다."));
     }

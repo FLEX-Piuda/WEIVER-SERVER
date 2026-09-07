@@ -10,6 +10,7 @@ import com.weiver.auth.dto.request.ApplicantEmailSendRequestDTO;
 import com.weiver.auth.dto.request.ApplicantEmailVerifyRequestDTO;
 import com.weiver.auth.dto.request.ApplicantLoginRequestDTO;
 import com.weiver.auth.dto.request.ApplicantPasswordChangeRequestDTO;
+import com.weiver.auth.dto.request.ApplicantPasswordUpdateRequestDTO;
 import com.weiver.auth.dto.request.ApplicantSignupCompleteRequestDTO;
 import com.weiver.auth.dto.request.ApplicantSignupInitRequestDTO;
 import com.weiver.auth.dto.response.ApplicantEmailVerifyResponseDTO;
@@ -870,6 +871,56 @@ public class ApplicantAuthServiceTest {
                 .extracting(ex -> ((BusinessException) ex).getCode())
                 .isEqualTo(ErrorCode.APPLICANT_NOT_FOUND);
 
+        verify(passwordEncoder, never()).encode(anyString());
+    }
+
+    // ----------- changeMyPassword -----------
+
+    @Test
+    @DisplayName("changeMyPassword: 로그인 상태에서 새 비밀번호를 인코딩해 갱신하고 세션/토큰은 무효화하지 않는다")
+    void changeMyPassword_success() {
+        // given
+        String publicId = "uuid-applicant-9";
+        Applicant applicant = Applicant.builder()
+                .email("me@test.com")
+                .password("encoded-old")
+                .role(UserRole.APPLICANT)
+                .publicId(publicId)
+                .status(ApplicantStatus.ACTIVE)
+                .build();
+        ReflectionTestUtils.setField(applicant, "applicantId", 9L);
+
+        ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
+                "Pass1234!", "Pass1234!"
+        );
+        given(applicantProvider.findByPublicId(publicId)).willReturn(applicant);
+        given(passwordEncoder.encode("Pass1234!")).willReturn("encoded-new");
+
+        // when
+        applicantAuthService.changeMyPassword(publicId, request);
+
+        // then
+        verify(passwordEncoder).encode("Pass1234!");
+        assertThat(applicant.getPassword()).isEqualTo("encoded-new");
+        verify(tokenVersionRepository, never()).increaseVersion(anyString(), any(UserRole.class));
+        verify(refreshTokenRepository, never()).deleteByPublicId(anyString(), any(UserRole.class));
+    }
+
+    @Test
+    @DisplayName("changeMyPassword: 새 비밀번호와 확인값이 다르면 PASSWORD_CONFIRM_NOT_MATCH 예외 (대상 조회 이전 차단)")
+    void changeMyPassword_confirmMismatch_throwsPasswordConfirmNotMatch() {
+        // given
+        ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
+                "Pass1234!", "Different1!"
+        );
+
+        // when & then
+        assertThatThrownBy(() -> applicantAuthService.changeMyPassword("uuid-applicant-9", request))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getCode())
+                .isEqualTo(ErrorCode.PASSWORD_CONFIRM_NOT_MATCH);
+
+        verify(applicantProvider, never()).findByPublicId(anyString());
         verify(passwordEncoder, never()).encode(anyString());
     }
 

@@ -191,6 +191,21 @@ public class ApplicantAuthService {
         refreshTokenRepository.deleteByPublicId(applicant.getPublicId(), applicant.getRole());
     }
 
+    /**
+     * 로그인 상태에서의 비밀번호 변경(마이페이지 계정 설정).
+     * 비로그인 재설정(changePassword)과 달리 이메일 인증 없이 현재 세션의 principal로 대상을 특정한다.
+     * 회원가입 비밀번호 설정과 동일하게 세션/토큰을 무효화하지 않고 로그인 세션을 유지한다.
+     */
+    @Transactional
+    public void changeMyPassword(String applicantPublicId, ApplicantPasswordUpdateRequestDTO request) {
+        validatePasswordConfirm(request.newPassword(), request.newPasswordConfirm());
+
+        Applicant applicant = applicantProvider.findByPublicId(applicantPublicId);
+
+        String encoded = passwordEncoder.encode(request.newPassword());
+        applicant.updatePassword(encoded);
+    }
+
     @Transactional
     public ApplicantSignupInitResponseDTO initSignup(ApplicantSignupInitRequestDTO request) {
         validatePasswordConfirm(request.password(), request.passwordConfirm());
