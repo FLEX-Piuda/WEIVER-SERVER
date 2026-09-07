@@ -122,6 +122,9 @@ public class InterviewFlowService {
         if (isAnswerClosed(session.getSessionStatus())) {
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED);
         }
+        if (!hasAnsweredTurn(session)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "제출할 면접 응답 내역이 없습니다.");
+        }
 
         session.updateStatus(InterviewSessionStatus.FINISHED);
         publishTranscriptSaveRequested(session);
@@ -451,6 +454,12 @@ public class InterviewFlowService {
                 || status == InterviewSessionStatus.REPORT_REQUESTED
                 || status == InterviewSessionStatus.REPORT_COMPLETED
                 || status == InterviewSessionStatus.FAILED;
+    }
+
+    private boolean hasAnsweredTurn(InterviewSession session) {
+        return session.getTranscript().stream()
+                .filter(Objects::nonNull)
+                .anyMatch(turn -> StringUtils.hasText(turn.answer()));
     }
 
     private boolean isTranscriptAlreadyProcessed(InterviewSessionStatus status) {

@@ -476,6 +476,54 @@ class InterviewFlowServiceTest {
     }
 
     @Test
+    @DisplayName("답변이 하나도 없는 진행 중 세션의 면접 결과 제출은 BAD_REQUEST로 거부하고 상태 전이/이벤트 발행이 없다")
+    void submitInterview_RejectsWhenNoAnsweredTurn() {
+        // given
+        Applicant applicant = applicant();
+        UUID sessionId = UUID.randomUUID();
+        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.QUESTION_READY,
+                List.of(
+                        InterviewTurnDTO.questionOnly("S_01_00", 1, "기술 질문"),
+                        new InterviewTurnDTO("C_01_00", 2, "컬처 질문", "   ")
+                ));
+
+        given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
+
+        // when & then
+        assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("제출할 면접 응답 내역이 없습니다.")
+                .extracting("code")
+                .isEqualTo(ErrorCode.BAD_REQUEST);
+
+        assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.QUESTION_READY);
+        verifyNoInteractions(domainEventPublisher);
+        verifyNoInteractions(messagingTemplate);
+    }
+
+    @Test
+    @DisplayName("transcript가 비어 있는 진행 중 세션의 면접 결과 제출은 BAD_REQUEST로 거부한다")
+    void submitInterview_RejectsWhenTranscriptIsEmpty() {
+        // given
+        Applicant applicant = applicant();
+        UUID sessionId = UUID.randomUUID();
+        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.STARTED, List.of());
+
+        given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
+
+        // when & then
+        assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("제출할 면접 응답 내역이 없습니다.")
+                .extracting("code")
+                .isEqualTo(ErrorCode.BAD_REQUEST);
+
+        assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.STARTED);
+        verifyNoInteractions(domainEventPublisher);
+        verifyNoInteractions(messagingTemplate);
+    }
+
+    @Test
     @DisplayName("면접 결과 제출 시 세션 소유자가 아니면 FORBIDDEN으로 거부한다")
     void submitInterview_RejectsWhenNotOwner() {
         Applicant applicant = applicant();
