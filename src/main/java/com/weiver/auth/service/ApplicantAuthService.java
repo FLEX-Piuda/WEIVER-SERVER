@@ -89,6 +89,38 @@ public class ApplicantAuthService {
         }
     }
 
+    public void sendPasswordResetCode(ApplicantEmailSendRequestDTO request) {
+        String email = request.email();
+
+        boolean activeApplicantExists = applicantRepository.findByEmailAndDeletedFalse(email)
+                .filter(existing -> existing.getStatus() == ApplicantStatus.ACTIVE)
+                .isPresent();
+
+        // 이메일 열거(enumeration) 방지: 가입되지 않은 이메일도 성공 응답을 반환하되 실제 코드는 발송하지 않는다.
+        if (!activeApplicantExists) {
+            return;
+        }
+
+        if (testEmailBypassEnabled && isTestEmail(email)) {
+            emailVerificationRepository.deleteCode(email);
+            emailVerificationRepository.deleteAttemptCount(email);
+            return;
+        }
+
+        String code = codeGenerator.generateCode();
+
+        emailVerificationRepository.deleteAttemptCount(email);
+        emailVerificationRepository.saveCode(email, code, EMAIL_CODE_TTL);
+
+        try {
+            emailVerificationService.sendVerificationCode(email, code);
+        } catch (Exception e) {
+            log.warn("[PasswordReset] 인증번호 메일 발송 실패 email={} cause={}", email, e.toString());
+            emailVerificationRepository.deleteCode(email);
+            throw new BusinessException(ErrorCode.EMAIL_SEND_FAILED);
+        }
+    }
+
     public ApplicantEmailVerifyResponseDTO verifyEmailCode(ApplicantEmailVerifyRequestDTO request) {
         String email = request.email();
 
@@ -142,6 +174,26 @@ public class ApplicantAuthService {
         String verificationToken = UUID.randomUUID().toString();
         emailVerificationRepository.saveVerifiedToken(verificationToken, email, VERIFICATION_TOKEN_TTL);
         return new ApplicantEmailVerifyResponseDTO(verificationToken);
+    }
+
+    @Transactional
+    public void changePassword(ApplicantPasswordChangeRequestDTO request) {
+        validatePasswordConfirm(request.newPassword(), request.newPasswordConfirm());
+
+        // verification 토큰을 atomic하게 소비 (한 번 시도하면 재사용 불가)
+        String verifiedEmail = emailVerificationRepository.findAndDeleteVerifiedToken(request.verificationToken())
+                .orElseThrow(() -> new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED));
+
+        if (!verifiedEmail.equals(request.email())) {
+            throw new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED);
+        }
+
+        Applicant applicant = applicantRepository.findByEmailAndDeletedFalse(request.email())
+                .filter(existing -> existing.getStatus() == ApplicantStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException(ErrorCode.APPLICANT_NOT_FOUND));
+
+        String encodedPassword = passwordEncoder.encode(request.newPassword());
+        applicant.updatePassword(encodedPassword);
     }
 
     @Transactional
