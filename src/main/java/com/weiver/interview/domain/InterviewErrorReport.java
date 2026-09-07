@@ -21,14 +21,14 @@ public class InterviewErrorReport extends BaseTimeEntity {
 
     @Builder.Default
     @Column(name = "public_id", nullable = false, unique = true, updatable = false)
-    private UUID publicId = UUID.randomUUID();
+    private String publicId = UUID.randomUUID().toString();
 
     @ToString.Exclude
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "interview_id", nullable = false)
     private InterviewSession interviewSession;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
     /**
