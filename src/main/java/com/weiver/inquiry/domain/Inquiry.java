@@ -22,7 +22,7 @@ public class Inquiry extends BaseTimeEntity {
 
     @Builder.Default
     @Column(name = "public_id", nullable = false, unique = true, updatable = false)
-    private UUID publicId = UUID.randomUUID();
+    private String publicId = UUID.randomUUID().toString();
 
     @ToString.Exclude
     @ManyToOne(fetch = FetchType.LAZY)

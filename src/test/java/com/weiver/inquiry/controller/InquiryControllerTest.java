@@ -52,10 +52,14 @@ class InquiryControllerTest {
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     private RequestPostProcessor customAuth(String publicId) {
+        return customAuth(publicId, UserRole.APPLICANT);
+    }
+
+    private RequestPostProcessor customAuth(String publicId, UserRole role) {
         return request -> {
-            AuthenticatedPrincipal principal = new AuthenticatedPrincipal(publicId, UserRole.APPLICANT);
+            AuthenticatedPrincipal principal = new AuthenticatedPrincipal(publicId, role);
             Authentication auth = new UsernamePasswordAuthenticationToken(
-                    principal, null, List.of(new SimpleGrantedAuthority("ROLE_APPLICANT")));
+                    principal, null, List.of(new SimpleGrantedAuthority("ROLE_" + role.name())));
             SecurityContextHolder.getContext().setAuthentication(auth);
             return request;
         };
@@ -118,6 +122,24 @@ class InquiryControllerTest {
                 .andDo(print())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
+
+        then(inquiryService).should(never()).createInquiry(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("APPLICANT가 아닌(COMPANY) 인증 주체면 403 FORBIDDEN을 반환한다")
+    void createInquiry_NotApplicant_ThrowsForbidden() throws Exception {
+        // given
+        InquiryCreateRequestDTO request = new InquiryCreateRequestDTO("면접 일정 문의", "일정을 변경하고 싶습니다.");
+
+        // when, then
+        mockMvc.perform(post("/api/inquiries")
+                        .with(customAuth("pub-1", UserRole.COMPANY))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andDo(print())
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("FORBIDDEN"));
 
         then(inquiryService).should(never()).createInquiry(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
     }

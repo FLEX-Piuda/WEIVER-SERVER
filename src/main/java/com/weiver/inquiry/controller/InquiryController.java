@@ -1,6 +1,7 @@
 package com.weiver.inquiry.controller;
 
 import com.weiver.global.common.ApiResponse;
+import com.weiver.global.common.UserRole;
 import com.weiver.global.exception.BusinessException;
 import com.weiver.global.exception.ErrorCode;
 import com.weiver.global.security.principal.AuthenticatedPrincipal;
@@ -34,6 +35,7 @@ public class InquiryController {
             @AuthenticationPrincipal @Parameter(hidden = true) AuthenticatedPrincipal principal) {
 
         if (principal == null) throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        if (principal.role() != UserRole.APPLICANT) throw new BusinessException(ErrorCode.FORBIDDEN);
 
         inquiryService.createInquiry(principal.publicId(), requestDTO);
 
