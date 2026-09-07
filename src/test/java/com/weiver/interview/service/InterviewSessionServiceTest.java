@@ -88,12 +88,12 @@ class InterviewSessionServiceTest {
     @DisplayName("완료 세션이 10일 전(31일 미만)이면 면접 불가(remainingCount 0, D-day > 0, 재지원일 = 완료일+31)이다")
     void getRemainingInterview_CompletedWithin31Days() {
         // given
-        LocalDateTime completedAt = LocalDateTime.now().minusDays(10);
-        LocalDate expectedReapplyDate = completedAt.toLocalDate().plusDays(31);
+        LocalDate interviewDate = LocalDate.now(KST).minusDays(10);
+        LocalDate expectedReapplyDate = interviewDate.plusDays(31);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
         given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
                 any(Applicant.class), any(Collection.class)))
-                .willReturn(Optional.of(aCompletedSessionCreatedAt(completedAt)));
+                .willReturn(Optional.of(aCompletedSessionOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
@@ -109,11 +109,11 @@ class InterviewSessionServiceTest {
     @DisplayName("완료 세션이 31일 이상 전이면 다시 면접 가능(remainingCount 1, D-day 0, 재지원일 null)이다")
     void getRemainingInterview_CompletedOver31DaysAgo() {
         // given
-        LocalDateTime completedAt = LocalDateTime.now().minusDays(40);
+        LocalDate interviewDate = LocalDate.now(KST).minusDays(40);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
         given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
                 any(Applicant.class), any(Collection.class)))
-                .willReturn(Optional.of(aCompletedSessionCreatedAt(completedAt)));
+                .willReturn(Optional.of(aCompletedSessionOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
