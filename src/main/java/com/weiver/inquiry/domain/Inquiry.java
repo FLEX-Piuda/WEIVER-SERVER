@@ -34,15 +34,4 @@ public class Inquiry extends BaseTimeEntity {
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
-
-    /**
-     * 문의 생성 정적 팩토리
-     */
-    public static Inquiry of(Applicant applicant, String title, String content) {
-        return Inquiry.builder()
-                .applicant(applicant)
-                .title(title)
-                .content(content)
-                .build();
-    }
 }

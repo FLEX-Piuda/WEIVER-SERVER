@@ -2,7 +2,6 @@ package com.weiver.inquiry.service;
 
 import com.weiver.applicant.domain.Applicant;
 import com.weiver.applicant.service.ApplicantService;
-import com.weiver.inquiry.domain.Inquiry;
 import com.weiver.inquiry.dto.request.InquiryCreateRequestDTO;
 import com.weiver.inquiry.repository.InquiryRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +18,6 @@ public class InquiryService {
 
     public void createInquiry(String applicantPublicId, InquiryCreateRequestDTO request) {
         Applicant applicant = applicantService.getApplicant(applicantPublicId);
-        Inquiry inquiry = Inquiry.of(applicant, request.title(), request.content());
-        inquiryRepository.save(inquiry);
+        inquiryRepository.save(request.toEntity(applicant));
     }
 }

@@ -25,6 +25,9 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -87,7 +90,7 @@ class InquiryControllerTest {
                 .andExpect(jsonPath("$.status").value("success"))
                 .andExpect(jsonPath("$.message").value("문의가 접수되었습니다."));
 
-        then(inquiryService).should().createInquiry(org.mockito.ArgumentMatchers.eq(publicId), org.mockito.ArgumentMatchers.any());
+        then(inquiryService).should().createInquiry(eq(publicId), any());
     }
 
     @Test
@@ -105,7 +108,7 @@ class InquiryControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
 
-        then(inquiryService).should(never()).createInquiry(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+        then(inquiryService).should(never()).createInquiry(anyString(), any());
     }
 
     @Test
@@ -123,7 +126,7 @@ class InquiryControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
 
-        then(inquiryService).should(never()).createInquiry(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+        then(inquiryService).should(never()).createInquiry(anyString(), any());
     }
 
     @Test
@@ -141,7 +144,7 @@ class InquiryControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("FORBIDDEN"));
 
-        then(inquiryService).should(never()).createInquiry(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+        then(inquiryService).should(never()).createInquiry(anyString(), any());
     }
 
     @Test
@@ -158,6 +161,6 @@ class InquiryControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
-        then(inquiryService).should(never()).createInquiry(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+        then(inquiryService).should(never()).createInquiry(anyString(), any());
     }
 }

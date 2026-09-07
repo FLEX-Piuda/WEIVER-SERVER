@@ -1,5 +1,7 @@
 package com.weiver.inquiry.dto.request;
 
+import com.weiver.applicant.domain.Applicant;
+import com.weiver.inquiry.domain.Inquiry;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -17,4 +19,11 @@ public record InquiryCreateRequestDTO(
         @Size(max = 2000, message = "내용은 최대 2000자까지 입력할 수 있습니다.")
         String content
 ) {
+    public Inquiry toEntity(Applicant applicant) {
+        return Inquiry.builder()
+                .applicant(applicant)
+                .title(this.title)
+                .content(this.content)
+                .build();
+    }
 }
