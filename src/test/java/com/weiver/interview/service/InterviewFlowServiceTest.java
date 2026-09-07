@@ -423,6 +423,7 @@ class InterviewFlowServiceTest {
     @Test
     @DisplayName("면접 결과 제출 시 진행 중 세션을 FINISHED 후 TRANSCRIPT_SAVE_REQUESTED로 전이하고 저장 요청 이벤트를 발행한다")
     void submitInterview_FinishesSessionAndPublishesTranscriptSaveRequest() {
+        // given
         Applicant applicant = applicant();
         UUID sessionId = UUID.randomUUID();
         InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.QUESTION_READY,
@@ -433,8 +434,10 @@ class InterviewFlowServiceTest {
 
         given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
 
+        // when
         interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID);
 
+        // then
         assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
 
         ArgumentCaptor<EventEnvelope<?>> eventCaptor = ArgumentCaptor.forClass(EventEnvelope.class);
@@ -460,12 +463,14 @@ class InterviewFlowServiceTest {
     @Test
     @DisplayName("이미 종료된 세션의 면접 결과 제출은 INTERVIEW_ALREADY_COMPLETED로 거부한다")
     void submitInterview_RejectsAlreadyCompletedSession() {
+        // given
         Applicant applicant = applicant();
         UUID sessionId = UUID.randomUUID();
         InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.FINISHED, List.of());
 
         given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
 
+        // when & then
         assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
@@ -526,12 +531,14 @@ class InterviewFlowServiceTest {
     @Test
     @DisplayName("면접 결과 제출 시 세션 소유자가 아니면 FORBIDDEN으로 거부한다")
     void submitInterview_RejectsWhenNotOwner() {
+        // given
         Applicant applicant = applicant();
         UUID sessionId = UUID.randomUUID();
         InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.QUESTION_READY, List.of());
 
         given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
 
+        // when & then
         assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, "other-public-id"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
@@ -544,9 +551,11 @@ class InterviewFlowServiceTest {
     @Test
     @DisplayName("면접 결과 제출 시 세션이 존재하지 않으면 INTERVIEW_SESSION_NOT_FOUND로 거부한다")
     void submitInterview_RejectsWhenSessionNotFound() {
+        // given
         UUID sessionId = UUID.randomUUID();
         given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.empty());
 
+        // when & then
         assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")

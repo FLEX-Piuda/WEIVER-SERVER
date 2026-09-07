@@ -126,13 +126,7 @@ public class InterviewFlowService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "제출할 면접 응답 내역이 없습니다.");
         }
 
-        session.updateStatus(InterviewSessionStatus.FINISHED);
-        publishTranscriptSaveRequested(session);
-        session.updateStatus(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
-        sendInterviewMessage(
-                session,
-                InterviewWebSocketMessageResponse.interviewFinished(session.getInterviewSessionId())
-        );
+        finishAndRequestTranscriptSave(session);
     }
 
     /**
@@ -154,13 +148,7 @@ public class InterviewFlowService {
         }
 
         if (isEndQuestion(data.nextQuestionCode())) {
-            session.updateStatus(InterviewSessionStatus.FINISHED);
-            publishTranscriptSaveRequested(session);
-            session.updateStatus(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
-            sendInterviewMessage(
-                    session,
-                    InterviewWebSocketMessageResponse.interviewFinished(session.getInterviewSessionId())
-            );
+            finishAndRequestTranscriptSave(session);
             return;
         }
 
@@ -229,6 +217,21 @@ public class InterviewFlowService {
                 );
 
         session.updateStatus(InterviewSessionStatus.REPORT_COMPLETED);
+    }
+
+    /**
+     * 면접을 종료 처리한다: FINISHED → transcript 저장 요청 발행 → TRANSCRIPT_SAVE_REQUESTED로 전이하고
+     * WebSocket으로 종료를 통지한다. 수동 종료(submitInterview)와 종료 질문(E_) 수신 분기가 공유한다.
+     */
+    private void finishAndRequestTranscriptSave(InterviewSession session) {
+        session.updateStatus(InterviewSessionStatus.FINISHED);
+        publishTranscriptSaveRequested(session);
+        session.updateStatus(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
+        // REST 호출자(수동 종료)는 WS 구독이 없을 수 있으나, 다른 탭/기기의 진행 중 WS 세션에 종료를 통지하는 용도.
+        sendInterviewMessage(
+                session,
+                InterviewWebSocketMessageResponse.interviewFinished(session.getInterviewSessionId())
+        );
     }
 
     /**
