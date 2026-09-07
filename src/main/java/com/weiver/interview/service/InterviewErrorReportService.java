@@ -15,13 +15,13 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class InterviewErrorReportService {
 
     private final InterviewSessionRepository interviewSessionRepository;
     private final InterviewErrorReportRepository interviewErrorReportRepository;
 
-    @Transactional
     public void createErrorReport(UUID interviewSessionId, String applicantPublicId,
                                   InterviewErrorReportRequestDTO request) {
         InterviewSession session = interviewSessionRepository.findByInterviewSessionId(interviewSessionId)

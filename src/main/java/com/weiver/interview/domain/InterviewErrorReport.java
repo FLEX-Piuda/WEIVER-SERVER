@@ -17,7 +17,7 @@ public class InterviewErrorReport extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "error_report_id")
-    private Long id;
+    private Long errorReportId;
 
     @Builder.Default
     @Column(name = "public_id", nullable = false, unique = true, updatable = false)
