@@ -16,6 +16,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Collection;
 import java.util.Optional;
 
@@ -35,6 +38,7 @@ class InterviewSessionServiceTest {
     private InterviewSessionService interviewSessionService;
 
     private static final String PUBLIC_ID = "applicant-public-id";
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private Applicant anApplicant() {
         return Applicant.builder().build();
@@ -47,6 +51,17 @@ class InterviewSessionServiceTest {
                 .build();
         ReflectionTestUtils.setField(session, "createTime", createTime);
         return session;
+    }
+
+    /**
+     * KST 기준 특정 날짜(정오)에 진행된 완료 세션을 만든다.
+     * 서버 기본 TZ와 무관하게 서비스가 해당 KST 날짜로 환산하도록 createTime을 구성한다.
+     */
+    private InterviewSession aCompletedSessionOnKstDate(LocalDate kstDate) {
+        LocalDateTime createTime = ZonedDateTime.of(kstDate, LocalTime.NOON, KST)
+                .withZoneSameInstant(ZoneId.systemDefault())
+                .toLocalDateTime();
+        return aCompletedSessionCreatedAt(createTime);
     }
 
     @Test
@@ -107,5 +122,46 @@ class InterviewSessionServiceTest {
         assertThat(response.remainingCount()).isEqualTo(1);
         assertThat(response.reapplyDDay()).isZero();
         assertThat(response.reapplyAvailableDate()).isNull();
+    }
+
+    @Test
+    @DisplayName("완료 세션이 KST 기준 정확히 31일 전이면 오늘이 재지원일이라 면접 가능(remainingCount 1, D-day 0, 재지원일 null)이다")
+    void getRemainingInterview_CompletedExactly31DaysAgo() {
+        // given
+        LocalDate interviewDate = LocalDate.now(KST).minusDays(31);
+        given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
+        given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class)))
+                .willReturn(Optional.of(aCompletedSessionOnKstDate(interviewDate)));
+
+        // when
+        InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
+
+        // then
+        assertThat(response.totalCount()).isEqualTo(1);
+        assertThat(response.remainingCount()).isEqualTo(1);
+        assertThat(response.reapplyDDay()).isZero();
+        assertThat(response.reapplyAvailableDate()).isNull();
+    }
+
+    @Test
+    @DisplayName("완료 세션이 KST 기준 정확히 30일 전이면 재지원일은 내일이라 면접 불가(remainingCount 0, D-day 1, 재지원일 = 세션일+31)이다")
+    void getRemainingInterview_CompletedExactly30DaysAgo() {
+        // given
+        LocalDate interviewDate = LocalDate.now(KST).minusDays(30);
+        LocalDate expectedReapplyDate = interviewDate.plusDays(31);
+        given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
+        given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class)))
+                .willReturn(Optional.of(aCompletedSessionOnKstDate(interviewDate)));
+
+        // when
+        InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
+
+        // then
+        assertThat(response.totalCount()).isEqualTo(1);
+        assertThat(response.remainingCount()).isZero();
+        assertThat(response.reapplyDDay()).isEqualTo(1);
+        assertThat(response.reapplyAvailableDate()).isEqualTo(expectedReapplyDate);
     }
 }

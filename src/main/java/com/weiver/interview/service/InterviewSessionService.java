@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -26,6 +27,9 @@ public class InterviewSessionService {
 
     private static final int TOTAL_COUNT = 1;
     private static final int REAPPLY_DAYS = 31;
+
+    /** 재지원 D-day 계산 기준 타임존(KST). 서버 기본 TZ에 의존하지 않기 위해 고정한다. */
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     /** 면접이 "완료"된 것으로 간주하는 상태 집합(재지원 대기 대상) */
     private static final Set<InterviewSessionStatus> COMPLETED_STATUSES = EnumSet.of(
@@ -59,7 +63,13 @@ public class InterviewSessionService {
 
     /**
      * 로그인 구직자의 AI 면접 잔여 횟수 및 재지원 D-day 조회
-     * 정책: 면접 총 1회 + 완료 후 31일 뒤 재지원 가능
+     *
+     * <p>정책: 면접 총 1회 + 재지원 기준일 = 최근 면접 세션의 진행일(세션 시작 시각, createTime) + 31일.
+     * 즉 "완료 시각"이 아니라 세션이 시작된 날(createTime)을 기산점으로 쓴다. InterviewSession에는
+     * 별도의 완료 타임스탬프 컬럼이 없고 BaseTimeEntity가 createTime/updateTime만 제공하기 때문이다.
+     * 정확한 완료 시각을 기준으로 하려면 별도의 완료 타임스탬프 컬럼 추가가 필요하다(후속 과제).
+     *
+     * <p>날짜 비교는 서버 기본 TZ에 의존하지 않도록 KST로 고정한다.
      */
     public InterviewRemainingResponse getRemainingInterview(String applicantPublicId) {
         Applicant applicant = applicantService.getApplicant(applicantPublicId);
@@ -72,9 +82,13 @@ public class InterviewSessionService {
             return new InterviewRemainingResponse(TOTAL_COUNT, 1, 0, null);
         }
 
-        LocalDate completedDate = completedSession.get().getCreateTime().toLocalDate();
-        LocalDate reapplyDate = completedDate.plusDays(REAPPLY_DAYS);
-        LocalDate today = LocalDate.now();
+        // 저장된 세션 시작 시각(서버 로컬)을 KST 날짜로 변환해 today(KST)와 같은 기준으로 비교한다.
+        LocalDate interviewDate = completedSession.get().getCreateTime()
+                .atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(KST)
+                .toLocalDate();
+        LocalDate reapplyDate = interviewDate.plusDays(REAPPLY_DAYS);
+        LocalDate today = LocalDate.now(KST);
 
         if (!today.isBefore(reapplyDate)) {
             return new InterviewRemainingResponse(TOTAL_COUNT, 1, 0, null);
