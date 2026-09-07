@@ -7,7 +7,9 @@ import com.weiver.global.security.cookie.CookieProvider;
 import com.weiver.global.security.jwt.JwtAuthenticationFilter;
 import com.weiver.global.security.jwt.JwtTokenProvider;
 import com.weiver.global.security.principal.AuthenticatedPrincipal;
+import com.weiver.interview.dto.response.InterviewRemainingResponse;
 import com.weiver.interview.service.InterviewFlowService;
+import com.weiver.interview.service.InterviewSessionService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,13 +25,16 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.doThrow;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willDoNothing;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -44,6 +49,8 @@ class InterviewControllerTest {
 
     @MockitoBean
     private InterviewFlowService interviewFlowService;
+    @MockitoBean
+    private InterviewSessionService interviewSessionService;
 
     @MockitoBean
     private JwtTokenProvider jwtTokenProvider;
@@ -66,6 +73,41 @@ class InterviewControllerTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    @DisplayName("면접 잔여 횟수 조회 성공 시 200과 응답 필드를 반환한다")
+    void getRemainingInterview_Success() throws Exception {
+        // given
+        String publicId = "applicant-public-id";
+        LocalDate reapplyDate = LocalDate.of(2026, 10, 8);
+        given(interviewSessionService.getRemainingInterview(eq(publicId)))
+                .willReturn(new InterviewRemainingResponse(1, 0, 21, reapplyDate));
+
+        // when, then
+        mockMvc.perform(get("/api/interviews/remaining")
+                        .with(customAuth(publicId))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.remainingCount").value(0))
+                .andExpect(jsonPath("$.data.reapplyDDay").value(21))
+                .andExpect(jsonPath("$.data.reapplyAvailableDate").value("2026-10-08"));
+
+        verify(interviewSessionService).getRemainingInterview(eq(publicId));
+    }
+
+    @Test
+    @DisplayName("엣지 케이스: Principal이 없으면 면접 잔여 횟수 조회 시 UNAUTHORIZED 에러가 발생한다")
+    void getRemainingInterview_WithoutPrincipal_ThrowsUnauthorized() throws Exception {
+        // when, then
+        mockMvc.perform(get("/api/interviews/remaining")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andDo(print())
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
     }
 
     @Test
