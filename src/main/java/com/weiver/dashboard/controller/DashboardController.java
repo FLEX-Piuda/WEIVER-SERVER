@@ -38,8 +38,8 @@ public class DashboardController {
     }
 
     @Operation(
-            summary = "공고 리스트 조회 (페이징)",
-            description = "기업이 작성한 채용 공고 리스트를 최신순으로 페이징하여 조회합니다.<br>" +
+            summary = "공고 리스트 조회 (Slice)",
+            description = "기업이 작성한 채용 공고를 최신순으로 Slice 조회합니다. 전체 건수 대신 pageable.hasNext를 반환합니다.<br>" +
                     "각 공고별 '새로운 지원자 수(newApplicantCount)'가 함께 반환됩니다."
     )
     @GetMapping("/job-postings")
@@ -50,7 +50,7 @@ public class DashboardController {
             @Parameter(description = "페이지 번호 (0부터 시작)", example = "0")
             @RequestParam(defaultValue = "0") int page,
 
-            @Parameter(description = "페이지당 데이터 개수", example = "3")
+            @Parameter(description = "페이지당 데이터 개수, 1 이상 100 이하", example = "3")
             @RequestParam(defaultValue = "3") int size,
 
             @AuthenticationPrincipal @Parameter(hidden = true) AuthenticatedPrincipal principal) {
