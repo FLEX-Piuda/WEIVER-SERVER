@@ -3,6 +3,7 @@ package com.weiver.jobposting.service;
 import com.weiver.company.domain.Company;
 import com.weiver.company.repository.CompanyRepository;
 import com.weiver.global.exception.BusinessException;
+import com.weiver.global.exception.ErrorCode;
 import com.weiver.global.s3.service.S3Service;
 import com.weiver.jobposting.domain.EmailTemplate;
 import com.weiver.jobposting.domain.JobPosting;
@@ -17,15 +18,19 @@ import com.weiver.notification.repository.NotificationRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 import org.springframework.data.domain.Sort;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -181,8 +186,8 @@ class JobPostingServiceTest {
     }
 
     @Test
-    @DisplayName("공고 목록 조회 성공: BaseTimeEntity의 createTime 필드 기준 내림차순으로 정렬한다")
-    void searchJobPostingsList_SortsByCreateTimeDesc() {
+    @DisplayName("공고 목록 조회 성공: 생성 시각과 ID 내림차순으로 정렬하고 Slice 정보를 반환한다")
+    void searchJobPostingsList_ReturnsStableSlice() {
         // given
         String publicId = "2222";
         int page = 0;
@@ -192,9 +197,9 @@ class JobPostingServiceTest {
         given(jobPosting.getJdId()).willReturn(1L);
         given(jobPosting.getStatus()).willReturn(JobPostingStatus.ACTIVE);
 
-        Page<JobPosting> jobPostingPage = new PageImpl<>(List.of(jobPosting));
+        Slice<JobPosting> jobPostingSlice = new SliceImpl<>(List.of(jobPosting), PageRequest.of(page, size), true);
         given(jobPostingRepository.findByCompany_PublicId(eq(publicId), any(Pageable.class)))
-                .willReturn(jobPostingPage);
+                .willReturn(jobPostingSlice);
         given(notificationRepository.countNewApplicantsByJdIds(anyList())).willReturn(List.of());
 
         // when
@@ -207,6 +212,48 @@ class JobPostingServiceTest {
         Sort.Order order = pageableCaptor.getValue().getSort().getOrderFor("createTime");
         assertThat(order).isNotNull();
         assertThat(order.getDirection()).isEqualTo(Sort.Direction.DESC);
+        assertThat(pageableCaptor.getValue().getSort()).containsExactly(
+                Sort.Order.desc("createTime"), Sort.Order.desc("jdId"));
         assertThat(result.content()).hasSize(1);
+        assertThat(result.content().getFirst().newApplicantCount()).isZero();
+        assertThat(result.pageable().hasNext()).isTrue();
+        assertThat(result.pageable().isLast()).isFalse();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"-1,3", "0,0", "0,-1", "0,101"})
+    void searchJobPostingsList_RejectsInvalidPageRequest(int page, int size) {
+        assertThatThrownBy(() -> jobPostingService.searchJobPostingsList("company", null, page, size))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(ErrorCode.BAD_REQUEST));
+        verifyNoInteractions(jobPostingRepository, notificationRepository);
+    }
+
+    @Test
+    void searchJobPostingsList_EmptySliceSkipsAggregation() {
+        given(jobPostingRepository.findByCompany_PublicId(eq("company"), any(Pageable.class)))
+                .willReturn(new SliceImpl<>(List.of(), PageRequest.of(0, 100), false));
+        JobPostingPageResponseDTO result = jobPostingService.searchJobPostingsList("company", null, 0, 100);
+        assertThat(result.content()).isEmpty();
+        assertThat(result.pageable().pageSize()).isEqualTo(100);
+        assertThat(result.pageable().hasNext()).isFalse();
+        assertThat(result.pageable().isLast()).isTrue();
+        verifyNoInteractions(notificationRepository);
+    }
+
+    @Test
+    void searchJobPostingsList_FiltersStatusAndMapsGroupedCounts() {
+        JobPosting first = JobPosting.builder().jdId(10L).status(JobPostingStatus.ACTIVE).build();
+        JobPosting second = JobPosting.builder().jdId(9L).status(JobPostingStatus.ACTIVE).build();
+        given(jobPostingRepository.findByCompany_PublicIdAndStatus(eq("company"), eq(JobPostingStatus.ACTIVE), any(Pageable.class)))
+                .willReturn(new SliceImpl<>(List.of(first, second), PageRequest.of(1, 3), false));
+        given(notificationRepository.countNewApplicantsByJdIds(List.of(10L, 9L)))
+                .willReturn(Collections.singletonList(new Object[]{10L, 2L}));
+        JobPostingPageResponseDTO result = jobPostingService.searchJobPostingsList("company", JobPostingStatus.ACTIVE, 1, 3);
+        assertThat(result.content()).extracting(d -> d.newApplicantCount()).containsExactly(2L, 0L);
+        assertThat(result.pageable().pageNumber()).isEqualTo(1);
+        assertThat(result.pageable().isLast()).isTrue();
+        verify(notificationRepository).countNewApplicantsByJdIds(List.of(10L, 9L));
+        verify(jobPostingRepository, never()).findByCompany_PublicId(any(), any());
     }
 }
