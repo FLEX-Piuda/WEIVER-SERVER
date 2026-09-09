@@ -128,6 +128,44 @@ class JobPostingSliceIntegrationTest {
         assertThat(slice.hasNext()).isFalse();
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void missingCompanyReturnsEmptySliceWithoutAggregation(boolean filtered) {
+        Company other = persistCompany("other", "other-login");
+        persistJob(other, JobPostingStatus.ACTIVE);
+        entityManager.flush();
+        entityManager.clear();
+        var statistics = entityManager.getEntityManagerFactory().unwrap(SessionFactory.class).getStatistics();
+        statistics.clear();
+
+        var service = new JobPostingService(null, notificationRepository, jobPostingRepository, null, null, null);
+        var result = service.searchJobPostingsList("missing", filtered ? JobPostingStatus.ACTIVE : null, 0, 3);
+
+        assertThat(result.content()).isEmpty();
+        assertThat(result.pageable().hasNext()).isFalse();
+        assertThat(result.pageable().isLast()).isTrue();
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+        assertThat(statistics.getEntityLoadCount()).isZero();
+    }
+
+    @Test
+    void statusFilterSkipsNewerNonMatchingJobs() {
+        Company company = persistCompany("target", "target-login");
+        JobPosting active = persistJob(company, JobPostingStatus.ACTIVE);
+        persistJob(company, JobPostingStatus.DRAFT);
+        persistJob(company, JobPostingStatus.CLOSED);
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE job_postings SET create_time = :time")
+                .setParameter("time", LocalDateTime.of(2026, 1, 2, 12, 0)).executeUpdate();
+        entityManager.clear();
+
+        var slice = jobPostingRepository.findByCompany_PublicIdAndStatus("target", JobPostingStatus.ACTIVE,
+                PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "createTime", "jdId")));
+
+        assertThat(slice.getContent()).extracting(JobPosting::getJdId).containsExactly(active.getJdId());
+        assertThat(slice.hasNext()).isFalse();
+    }
+
     private JobPosting persistJob(Company company, JobPostingStatus status) {
         JobPosting job = JobPosting.builder().company(company).title("backend")
                 .jobCategory("IT").detailedJob("backend").deadline(LocalDate.of(2027, 1, 1))

@@ -15,9 +15,32 @@ import java.time.LocalDate;
 @Repository
 public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
 
-    Slice<JobPosting> findByCompany_PublicId(String publicId, Pageable pageable);
+    @Query("""
+        SELECT jp
+        FROM JobPosting jp
+        WHERE jp.company.companyId = (
+            SELECT c.companyId
+            FROM Company c
+            WHERE c.publicId = :publicId
+        )
+        """)
+    Slice<JobPosting> findByCompany_PublicId(@Param("publicId") String publicId, Pageable pageable);
 
-    Slice<JobPosting> findByCompany_PublicIdAndStatus(String publicId, JobPostingStatus status, Pageable pageable);
+    @Query("""
+        SELECT jp
+        FROM JobPosting jp
+        WHERE jp.company.companyId = (
+            SELECT c.companyId
+            FROM Company c
+            WHERE c.publicId = :publicId
+        )
+        AND jp.status = :status
+        """)
+    Slice<JobPosting> findByCompany_PublicIdAndStatus(
+            @Param("publicId") String publicId,
+            @Param("status") JobPostingStatus status,
+            Pageable pageable
+    );
 
     boolean existsByJdIdAndCompany_PublicId(Long jdId, String publicId);
 
