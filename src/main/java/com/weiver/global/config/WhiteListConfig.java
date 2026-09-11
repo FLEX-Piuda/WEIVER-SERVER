@@ -32,7 +32,9 @@ public class WhiteListConfig {
                 "/api/auth/applicants/email/verify",
                 "/api/auth/applicants/signup/init",
                 "/api/auth/applicants/signup/agreements",
-                "/api/auth/applicants/login"
+                "/api/auth/applicants/login",
+                "/api/auth/applicants/password/email/send",
+                "/api/auth/applicants/password/email/verify"
         );
     }
 

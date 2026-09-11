@@ -19,7 +19,7 @@ import com.weiver.jobposting.type.JobPostingStatus;
 import com.weiver.notification.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -37,6 +37,8 @@ import java.util.stream.Collectors;
 @Transactional
 @RequiredArgsConstructor
 public class JobPostingService {
+
+    private static final int MAX_JOB_POSTING_PAGE_SIZE = 100;
 
     private final EmailTemplateRepository emailTemplateRepository;
     private final NotificationRepository notificationRepository;
@@ -122,16 +124,21 @@ public class JobPostingService {
      * */
     @Transactional(readOnly = true)
     public JobPostingPageResponseDTO searchJobPostingsList(String publicId, JobPostingStatus status, int page, int size){
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createTime"));
+        if (page < 0 || size < 1 || size > MAX_JOB_POSTING_PAGE_SIZE) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "page는 0 이상, size는 1 이상 100 이하여야 합니다.");
+        }
+        Pageable pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Direction.DESC, "createTime", "jdId"));
 
-        Page<JobPosting> jobPostingPage;
+        Slice<JobPosting> jobPostingSlice;
         if (status != null) {
-            jobPostingPage = jobPostingRepository.findByCompany_PublicIdAndStatus(publicId, status, pageable);
+            jobPostingSlice = jobPostingRepository.findByCompany_PublicIdAndStatus(publicId, status, pageable);
         } else {
-            jobPostingPage = jobPostingRepository.findByCompany_PublicId(publicId, pageable);
+            jobPostingSlice = jobPostingRepository.findByCompany_PublicId(publicId, pageable);
         }
 
-        List<Long> jdIds = jobPostingPage.getContent().stream()
+        List<Long> jdIds = jobPostingSlice.getContent().stream()
                 .map(JobPosting::getJdId)
                 .toList();
 
@@ -148,14 +155,14 @@ public class JobPostingService {
             newApplicantCountMap = Map.of();
         }
 
-        List<JobPostingsDetails> detailsList = jobPostingPage.getContent().stream()
+        List<JobPostingsDetails> detailsList = jobPostingSlice.getContent().stream()
                 .map(jobPosting -> {
                     long newApplicantCount = newApplicantCountMap.getOrDefault(jobPosting.getJdId(), 0L); // 새로운 지원자가 없으면 0
                     return JobPostingsDetails.of(jobPosting, newApplicantCount);
                 })
                 .toList();
 
-        return JobPostingPageResponseDTO.of(jobPostingPage, detailsList);
+        return JobPostingPageResponseDTO.of(jobPostingSlice, detailsList);
     }
 
     @Transactional(readOnly = true)

@@ -69,6 +69,29 @@ public class ApplicantAuthService {
                     throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
                 });
 
+        issueAndSendVerificationCode(email, "[EmailVerification]");
+    }
+
+    public void sendPasswordResetCode(ApplicantEmailSendRequestDTO request) {
+        String email = request.email();
+
+        boolean activeApplicantExists = applicantRepository.findByEmailAndDeletedFalse(email)
+                .filter(existing -> existing.getStatus() == ApplicantStatus.ACTIVE)
+                .isPresent();
+
+        // 이메일 열거(enumeration) 방지: 가입되지 않은 이메일도 성공 응답을 반환하되 실제 코드는 발송하지 않는다.
+        if (!activeApplicantExists) {
+            return;
+        }
+
+        issueAndSendVerificationCode(email, "[PasswordReset]");
+    }
+
+    /**
+     * 인증번호를 발급하고 이메일로 발송하는 공통 로직.
+     * 사전조건(가입 여부 검사 등)은 호출부에서 처리한 뒤 진입한다.
+     */
+    private void issueAndSendVerificationCode(String email, String logPrefix) {
         if (testEmailBypassEnabled && isTestEmail(email)) {
             emailVerificationRepository.deleteCode(email);
             emailVerificationRepository.deleteAttemptCount(email);
@@ -83,7 +106,7 @@ public class ApplicantAuthService {
         try {
             emailVerificationService.sendVerificationCode(email, code);
         } catch (Exception e) {
-            log.warn("[EmailVerification] 인증번호 메일 발송 실패 email={} cause={}", email, e.toString());
+            log.warn("{} 인증번호 메일 발송 실패 email={} cause={}", logPrefix, email, e.toString());
             emailVerificationRepository.deleteCode(email);
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAILED);
         }
@@ -142,6 +165,45 @@ public class ApplicantAuthService {
         String verificationToken = UUID.randomUUID().toString();
         emailVerificationRepository.saveVerifiedToken(verificationToken, email, VERIFICATION_TOKEN_TTL);
         return new ApplicantEmailVerifyResponseDTO(verificationToken);
+    }
+
+    @Transactional
+    public void changePassword(ApplicantPasswordChangeRequestDTO request) {
+        validatePasswordConfirm(request.newPassword(), request.newPasswordConfirm());
+
+        // verification 토큰을 atomic하게 소비 (한 번 시도하면 재사용 불가)
+        String verifiedEmail = emailVerificationRepository.findAndDeleteVerifiedToken(request.verificationToken())
+                .orElseThrow(() -> new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED));
+
+        if (!verifiedEmail.equals(request.email())) {
+            throw new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED);
+        }
+
+        Applicant applicant = applicantRepository.findByEmailAndDeletedFalse(request.email())
+                .filter(existing -> existing.getStatus() == ApplicantStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException(ErrorCode.APPLICANT_NOT_FOUND));
+
+        String encodedPassword = passwordEncoder.encode(request.newPassword());
+        applicant.updatePassword(encodedPassword);
+
+        // 비밀번호 변경 후 기존 세션/토큰 무효화 (액세스 토큰 버전 증가 + 리프레시 토큰 폐기)
+        tokenVersionRepository.increaseVersion(applicant.getPublicId(), applicant.getRole());
+        refreshTokenRepository.deleteByPublicId(applicant.getPublicId(), applicant.getRole());
+    }
+
+    /**
+     * 로그인 상태에서의 비밀번호 변경(마이페이지 계정 설정).
+     * 비로그인 재설정(changePassword)과 달리 이메일 인증 없이 현재 세션의 principal로 대상을 특정한다.
+     * 회원가입 비밀번호 설정과 동일하게 세션/토큰을 무효화하지 않고 로그인 세션을 유지한다.
+     */
+    @Transactional
+    public void changeMyPassword(String applicantPublicId, ApplicantPasswordUpdateRequestDTO request) {
+        validatePasswordConfirm(request.newPassword(), request.newPasswordConfirm());
+
+        Applicant applicant = applicantProvider.findByPublicId(applicantPublicId);
+
+        String encoded = passwordEncoder.encode(request.newPassword());
+        applicant.updatePassword(encoded);
     }
 
     @Transactional

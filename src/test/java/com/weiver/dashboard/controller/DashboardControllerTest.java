@@ -3,10 +3,14 @@ package com.weiver.dashboard.controller;
 import com.weiver.dashboard.dto.response.DashboardNotificationListResponseDTO;
 import com.weiver.dashboard.service.DashboardService;
 import com.weiver.global.common.UserRole;
+import com.weiver.global.exception.BusinessException;
+import com.weiver.global.exception.ErrorCode;
 import com.weiver.global.security.cookie.CookieProvider;
 import com.weiver.global.security.jwt.JwtAuthenticationFilter;
 import com.weiver.global.security.jwt.JwtTokenProvider;
 import com.weiver.global.security.principal.AuthenticatedPrincipal;
+import com.weiver.jobposting.dto.response.JobPostingPageResponseDTO;
+import com.weiver.jobposting.dto.response.JobPostingsDetails;
 import com.weiver.notification.dto.response.NotificationResponseDTO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -116,6 +120,42 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.data.pageable.isLast").value(true));
 
         verify(dashboardService).getNotifications("company-1", 0, 20);
+    }
+
+    @Test
+    void getJobPostings_UsesDefaultSizeAndSerializesSliceContract() throws Exception {
+        var detail = new JobPostingsDetails(
+                10L, "백엔드", "공개중", "IT", "backend", 2L);
+        var response = JobPostingPageResponseDTO.of(
+                new SliceImpl<>(List.of(detail), PageRequest.of(0, 3), true), List.of(detail));
+        given(dashboardService.getJobPostingsList("company-1", null, 0, 3)).willReturn(response);
+        mockMvc.perform(get("/api/dashboards/job-postings").with(companyAuth("company-1")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].jdId").value(10))
+                .andExpect(jsonPath("$.data.content[0].newApplicantCount").value(2))
+                .andExpect(jsonPath("$.data.pageable.pageNumber").value(0))
+                .andExpect(jsonPath("$.data.pageable.pageSize").value(3))
+                .andExpect(jsonPath("$.data.pageable.hasNext").value(true))
+                .andExpect(jsonPath("$.data.pageable.isLast").value(false))
+                .andExpect(jsonPath("$.data.pageable.totalElements").doesNotExist())
+                .andExpect(jsonPath("$.data.pageable.totalPages").doesNotExist());
+        verify(dashboardService).getJobPostingsList("company-1", null, 0, 3);
+    }
+
+    @Test
+    void getJobPostings_InvalidPageReturnsBadRequest() throws Exception {
+        given(dashboardService.getJobPostingsList("company-1", null, -1, 3))
+                .willThrow(new BusinessException(
+                        ErrorCode.BAD_REQUEST));
+        mockMvc.perform(get("/api/dashboards/job-postings").param("page", "-1")
+                        .with(companyAuth("company-1")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getJobPostings_RequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/dashboards/job-postings"))
+                .andExpect(status().isUnauthorized());
     }
 
     private RequestPostProcessor companyAuth(String publicId) {
