@@ -469,7 +469,7 @@ class InterviewFlowServiceTest {
     }
 
     @Test
-    @DisplayName("아직 종료되지 않은 진행 중 세션의 면접 결과 제출은 BAD_REQUEST로 거부하고 상태 전이/이벤트 발행이 없다")
+    @DisplayName("아직 종료되지 않은 진행 중 세션의 면접 결과 제출은 INTERVIEW_NOT_FINISHED로 거부하고 상태 전이/이벤트 발행이 없다")
     void submitInterview_RejectsWhenNotFinished() {
         // given
         Applicant applicant = applicant();
@@ -482,11 +482,31 @@ class InterviewFlowServiceTest {
         // when & then
         assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("아직 종료되지 않은 면접입니다.")
                 .extracting("code")
-                .isEqualTo(ErrorCode.BAD_REQUEST);
+                .isEqualTo(ErrorCode.INTERVIEW_NOT_FINISHED);
 
         assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.QUESTION_READY);
+        verifyNoInteractions(domainEventPublisher);
+        verifyNoInteractions(messagingTemplate);
+    }
+
+    @Test
+    @DisplayName("실패(FAILED) 세션의 면접 결과 제출은 INTERVIEW_FAILED로 거부하고 상태 전이/이벤트 발행이 없다")
+    void submitInterview_RejectsFailedSession() {
+        // given
+        Applicant applicant = applicant();
+        UUID sessionId = UUID.randomUUID();
+        InterviewSession session = session(sessionId, applicant, InterviewSessionStatus.FAILED, List.of());
+
+        given(interviewSessionRepository.findByInterviewSessionId(sessionId)).willReturn(Optional.of(session));
+
+        // when & then
+        assertThatThrownBy(() -> interviewFlowService.submitInterview(sessionId, APPLICANT_PUBLIC_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo(ErrorCode.INTERVIEW_FAILED);
+
+        assertThat(session.getSessionStatus()).isEqualTo(InterviewSessionStatus.FAILED);
         verifyNoInteractions(domainEventPublisher);
         verifyNoInteractions(messagingTemplate);
     }

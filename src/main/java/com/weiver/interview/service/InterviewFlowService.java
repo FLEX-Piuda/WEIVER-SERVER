@@ -121,13 +121,17 @@ public class InterviewFlowService {
         InterviewSession session = getSessionForApplicant(interviewSessionId, applicantPublicId);
         InterviewSessionStatus status = session.getSessionStatus();
 
-        // 이미 제출된(또는 종료 처리 진행/완료/실패) 면접이면 재제출 불가
+        // 실패(재처리 초과/복구 불가) 면접은 제출 불가(재응시 필요)
+        if (status == InterviewSessionStatus.FAILED) {
+            throw new BusinessException(ErrorCode.INTERVIEW_FAILED);
+        }
+        // 이미 제출된(종료 처리 진행/완료) 면접이면 재제출 불가
         if (isSubmitted(status)) {
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED);
         }
         // 아직 면접 Q&A가 끝나지 않았으면(진행 중) 제출 불가
         if (status != InterviewSessionStatus.FINISHED) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "아직 종료되지 않은 면접입니다.");
+            throw new BusinessException(ErrorCode.INTERVIEW_NOT_FINISHED);
         }
 
         requestTranscriptSave(session);
@@ -462,14 +466,13 @@ public class InterviewFlowService {
     }
 
     /**
-     * 이미 제출된(또는 종료 처리 진행/완료/실패) 상태인지 판정한다. FINISHED(제출 대기)는 포함하지 않는다.
+     * 이미 제출된(종료 처리 진행/완료) 상태 판정. FINISHED(제출 대기)와 FAILED(실패)는 포함하지 않는다.
      */
     private boolean isSubmitted(InterviewSessionStatus status) {
         return status == InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED
                 || status == InterviewSessionStatus.TRANSCRIPT_SAVED
                 || status == InterviewSessionStatus.REPORT_REQUESTED
-                || status == InterviewSessionStatus.REPORT_COMPLETED
-                || status == InterviewSessionStatus.FAILED;
+                || status == InterviewSessionStatus.REPORT_COMPLETED;
     }
 
     private boolean isTranscriptAlreadyProcessed(InterviewSessionStatus status) {

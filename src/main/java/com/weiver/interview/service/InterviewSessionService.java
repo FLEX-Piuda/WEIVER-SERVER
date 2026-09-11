@@ -99,15 +99,13 @@ public class InterviewSessionService {
                 .withZoneSameInstant(ZoneId.systemDefault())
                 .toLocalDateTime();
 
-        List<InterviewSession> sessions =
-                interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
-                        applicant, COMPLETED_STATUSES, threshold);
+        List<LocalDateTime> createTimes =
+                interviewSessionRepository.findActiveSessionCreateTimes(applicant, COMPLETED_STATUSES, threshold);
 
         // 저장된 세션 시작 시각(서버 로컬)을 KST 날짜로 변환해 재지원일(진행일+31)을 구하고,
         // 오늘이 재지원일 이전인(=아직 창을 점유하는) 활성 세션만 createTime 내림차순 순서를 유지해 모은다.
-        List<LocalDate> activeReapplyDates = sessions.stream()
-                .map(session -> session.getCreateTime()
-                        .atZone(ZoneId.systemDefault())
+        List<LocalDate> activeReapplyDates = createTimes.stream()
+                .map(ct -> ct.atZone(ZoneId.systemDefault())
                         .withZoneSameInstant(KST)
                         .toLocalDate()
                         .plusDays(REAPPLY_DAYS))

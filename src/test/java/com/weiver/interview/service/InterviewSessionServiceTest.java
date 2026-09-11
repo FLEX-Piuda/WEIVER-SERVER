@@ -2,7 +2,6 @@ package com.weiver.interview.service;
 
 import com.weiver.applicant.domain.Applicant;
 import com.weiver.applicant.service.ApplicantService;
-import com.weiver.interview.domain.InterviewSession;
 import com.weiver.interview.dto.response.InterviewRemainingResponse;
 import com.weiver.interview.repository.InterviewSessionRepository;
 import com.weiver.interview.type.InterviewSessionStatus;
@@ -13,7 +12,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -45,24 +43,14 @@ class InterviewSessionServiceTest {
         return Applicant.builder().build();
     }
 
-    private InterviewSession aCompletedSessionCreatedAt(LocalDateTime createTime) {
-        InterviewSession session = InterviewSession.builder()
-                .quarter("2026Q1")
-                .sessionStatus(InterviewSessionStatus.REPORT_COMPLETED)
-                .build();
-        ReflectionTestUtils.setField(session, "createTime", createTime);
-        return session;
-    }
-
     /**
-     * KST 기준 특정 날짜(정오)에 진행된 완료 세션을 만든다.
+     * KST 기준 특정 날짜(정오)에 진행된 완료 세션의 createTime을 만든다.
      * 서버 기본 TZ와 무관하게 서비스가 해당 KST 날짜로 환산하도록 createTime을 구성한다.
      */
-    private InterviewSession aCompletedSessionOnKstDate(LocalDate kstDate) {
-        LocalDateTime createTime = ZonedDateTime.of(kstDate, LocalTime.NOON, KST)
+    private LocalDateTime aCreateTimeOnKstDate(LocalDate kstDate) {
+        return ZonedDateTime.of(kstDate, LocalTime.NOON, KST)
                 .withZoneSameInstant(ZoneId.systemDefault())
                 .toLocalDateTime();
-        return aCompletedSessionCreatedAt(createTime);
     }
 
     @Test
@@ -70,7 +58,7 @@ class InterviewSessionServiceTest {
     void getRemainingInterview_NoConsumedSession() {
         // given
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+        given(interviewSessionRepository.findActiveSessionCreateTimes(
                 any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
                 .willReturn(List.of());
 
@@ -90,9 +78,9 @@ class InterviewSessionServiceTest {
         // given
         LocalDate interviewDate = LocalDate.now(KST).minusDays(10);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+        given(interviewSessionRepository.findActiveSessionCreateTimes(
                 any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
-                .willReturn(List.of(aCompletedSessionOnKstDate(interviewDate)));
+                .willReturn(List.of(aCreateTimeOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
@@ -113,13 +101,13 @@ class InterviewSessionServiceTest {
         // 4번째로 최근 = 가장 오래된 today-20 → 재지원일 = (today-20)+31 = today+11.
         LocalDate expectedSlot = today.minusDays(20).plusDays(31);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+        given(interviewSessionRepository.findActiveSessionCreateTimes(
                 any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
                 .willReturn(List.of(
-                        aCompletedSessionOnKstDate(today.minusDays(1)),
-                        aCompletedSessionOnKstDate(today.minusDays(5)),
-                        aCompletedSessionOnKstDate(today.minusDays(10)),
-                        aCompletedSessionOnKstDate(today.minusDays(20))));
+                        aCreateTimeOnKstDate(today.minusDays(1)),
+                        aCreateTimeOnKstDate(today.minusDays(5)),
+                        aCreateTimeOnKstDate(today.minusDays(10)),
+                        aCreateTimeOnKstDate(today.minusDays(20))));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
@@ -137,9 +125,9 @@ class InterviewSessionServiceTest {
         // given
         LocalDate interviewDate = LocalDate.now(KST).minusDays(40);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+        given(interviewSessionRepository.findActiveSessionCreateTimes(
                 any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
-                .willReturn(List.of(aCompletedSessionOnKstDate(interviewDate)));
+                .willReturn(List.of(aCreateTimeOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
@@ -157,9 +145,9 @@ class InterviewSessionServiceTest {
         // given
         LocalDate interviewDate = LocalDate.now(KST).minusDays(31);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+        given(interviewSessionRepository.findActiveSessionCreateTimes(
                 any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
-                .willReturn(List.of(aCompletedSessionOnKstDate(interviewDate)));
+                .willReturn(List.of(aCreateTimeOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
@@ -177,9 +165,9 @@ class InterviewSessionServiceTest {
         // given
         LocalDate interviewDate = LocalDate.now(KST).minusDays(30);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+        given(interviewSessionRepository.findActiveSessionCreateTimes(
                 any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
-                .willReturn(List.of(aCompletedSessionOnKstDate(interviewDate)));
+                .willReturn(List.of(aCreateTimeOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
@@ -196,7 +184,7 @@ class InterviewSessionServiceTest {
     void getRemainingInterview_ConsumedStatusesContainFinished() {
         // given
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+        given(interviewSessionRepository.findActiveSessionCreateTimes(
                 any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
                 .willReturn(List.of());
 
@@ -208,7 +196,7 @@ class InterviewSessionServiceTest {
         ArgumentCaptor<Collection<InterviewSessionStatus>> statusesCaptor =
                 ArgumentCaptor.forClass(Collection.class);
         then(interviewSessionRepository).should()
-                .findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                .findActiveSessionCreateTimes(
                         any(Applicant.class), statusesCaptor.capture(), any(LocalDateTime.class));
         assertThat(statusesCaptor.getValue())
                 .contains(
@@ -232,12 +220,12 @@ class InterviewSessionServiceTest {
         // 서비스 인메모리 필터(today.isBefore)가 비활성으로 걸러냄을 검증한다.
         LocalDate today = LocalDate.now(KST);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+        given(interviewSessionRepository.findActiveSessionCreateTimes(
                 any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
                 .willReturn(List.of(
-                        aCompletedSessionOnKstDate(today.minusDays(1)),
-                        aCompletedSessionOnKstDate(today.minusDays(5)),
-                        aCompletedSessionOnKstDate(today.minusDays(40))));
+                        aCreateTimeOnKstDate(today.minusDays(1)),
+                        aCreateTimeOnKstDate(today.minusDays(5)),
+                        aCreateTimeOnKstDate(today.minusDays(40))));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
@@ -258,14 +246,14 @@ class InterviewSessionServiceTest {
         // 4번째로 최근 = today-15 → 재지원일 = (today-15)+31 = today+16.
         LocalDate expectedSlot = today.minusDays(15).plusDays(31);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+        given(interviewSessionRepository.findActiveSessionCreateTimes(
                 any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
                 .willReturn(List.of(
-                        aCompletedSessionOnKstDate(today.minusDays(1)),
-                        aCompletedSessionOnKstDate(today.minusDays(5)),
-                        aCompletedSessionOnKstDate(today.minusDays(10)),
-                        aCompletedSessionOnKstDate(today.minusDays(15)),
-                        aCompletedSessionOnKstDate(today.minusDays(25))));
+                        aCreateTimeOnKstDate(today.minusDays(1)),
+                        aCreateTimeOnKstDate(today.minusDays(5)),
+                        aCreateTimeOnKstDate(today.minusDays(10)),
+                        aCreateTimeOnKstDate(today.minusDays(15)),
+                        aCreateTimeOnKstDate(today.minusDays(25))));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
