@@ -82,7 +82,7 @@ class InterviewControllerTest {
         String publicId = "applicant-public-id";
         LocalDate reapplyDate = LocalDate.of(2026, 10, 8);
         given(interviewSessionService.getRemainingInterview(eq(publicId)))
-                .willReturn(new InterviewRemainingResponse(1, 0, 21, reapplyDate));
+                .willReturn(new InterviewRemainingResponse(4, 0, 21, reapplyDate));
 
         // when, then
         mockMvc.perform(get("/api/interviews/remaining")
@@ -91,7 +91,7 @@ class InterviewControllerTest {
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"))
-                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.totalCount").value(4))
                 .andExpect(jsonPath("$.data.remainingCount").value(0))
                 .andExpect(jsonPath("$.data.reapplyDDay").value(21))
                 .andExpect(jsonPath("$.data.reapplyAvailableDate").value("2026-10-08"));

@@ -21,7 +21,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Collection;
-import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -66,138 +66,214 @@ class InterviewSessionServiceTest {
     }
 
     @Test
-    @DisplayName("완료된 면접 세션이 없으면 면접 가능(remainingCount 1, D-day 0, 재지원일 null)이다")
-    void getRemainingInterview_NoCompletedSession() {
+    @DisplayName("소진된 면접 세션이 없으면 면접 가능(remainingCount 4, D-day 0, 재지원일 null)이다")
+    void getRemainingInterview_NoConsumedSession() {
         // given
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
-                any(Applicant.class), any(Collection.class)))
-                .willReturn(Optional.empty());
+        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
+                .willReturn(List.of());
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
 
         // then
-        assertThat(response.totalCount()).isEqualTo(1);
-        assertThat(response.remainingCount()).isEqualTo(1);
+        assertThat(response.totalCount()).isEqualTo(4);
+        assertThat(response.remainingCount()).isEqualTo(4);
         assertThat(response.reapplyDDay()).isZero();
         assertThat(response.reapplyAvailableDate()).isNull();
     }
 
     @Test
-    @DisplayName("완료 세션이 10일 전(31일 미만)이면 면접 불가(remainingCount 0, D-day > 0, 재지원일 = 완료일+31)이다")
-    void getRemainingInterview_CompletedWithin31Days() {
+    @DisplayName("활성 소진 세션이 10일 전 1개면 잔여 3(remainingCount 3, D-day 0, 재지원일 null)이다")
+    void getRemainingInterview_OneActiveSession() {
         // given
         LocalDate interviewDate = LocalDate.now(KST).minusDays(10);
-        LocalDate expectedReapplyDate = interviewDate.plusDays(31);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
-                any(Applicant.class), any(Collection.class)))
-                .willReturn(Optional.of(aCompletedSessionOnKstDate(interviewDate)));
+        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
+                .willReturn(List.of(aCompletedSessionOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
 
         // then
-        assertThat(response.totalCount()).isEqualTo(1);
-        assertThat(response.remainingCount()).isZero();
-        assertThat(response.reapplyDDay()).isPositive();
-        assertThat(response.reapplyAvailableDate()).isEqualTo(expectedReapplyDate);
+        assertThat(response.totalCount()).isEqualTo(4);
+        assertThat(response.remainingCount()).isEqualTo(3);
+        assertThat(response.reapplyDDay()).isZero();
+        assertThat(response.reapplyAvailableDate()).isNull();
     }
 
     @Test
-    @DisplayName("완료 세션이 31일 이상 전이면 다시 면접 가능(remainingCount 1, D-day 0, 재지원일 null)이다")
-    void getRemainingInterview_CompletedOver31DaysAgo() {
+    @DisplayName("활성 소진 세션이 4개면 잔여 0이고 D-day는 4번째로 최근(가장 오래된) 세션의 재지원일 기준이다")
+    void getRemainingInterview_FourActiveSessions() {
+        // given
+        LocalDate today = LocalDate.now(KST);
+        // 리포지토리는 createTime 내림차순(최근순)으로 반환한다: today-1, today-5, today-10, today-20.
+        // 4번째로 최근 = 가장 오래된 today-20 → 재지원일 = (today-20)+31 = today+11.
+        LocalDate expectedSlot = today.minusDays(20).plusDays(31);
+        given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
+        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
+                .willReturn(List.of(
+                        aCompletedSessionOnKstDate(today.minusDays(1)),
+                        aCompletedSessionOnKstDate(today.minusDays(5)),
+                        aCompletedSessionOnKstDate(today.minusDays(10)),
+                        aCompletedSessionOnKstDate(today.minusDays(20))));
+
+        // when
+        InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
+
+        // then
+        assertThat(response.totalCount()).isEqualTo(4);
+        assertThat(response.remainingCount()).isZero();
+        assertThat(response.reapplyDDay()).isEqualTo(11);
+        assertThat(response.reapplyAvailableDate()).isEqualTo(expectedSlot);
+    }
+
+    @Test
+    @DisplayName("소진 세션이 31일보다 오래되면(40일 전) 창에서 빠져 카운트되지 않아 잔여 4다")
+    void getRemainingInterview_OlderThanWindowNotCounted() {
         // given
         LocalDate interviewDate = LocalDate.now(KST).minusDays(40);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
-                any(Applicant.class), any(Collection.class)))
-                .willReturn(Optional.of(aCompletedSessionOnKstDate(interviewDate)));
+        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
+                .willReturn(List.of(aCompletedSessionOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
 
         // then
-        assertThat(response.totalCount()).isEqualTo(1);
-        assertThat(response.remainingCount()).isEqualTo(1);
+        assertThat(response.totalCount()).isEqualTo(4);
+        assertThat(response.remainingCount()).isEqualTo(4);
         assertThat(response.reapplyDDay()).isZero();
         assertThat(response.reapplyAvailableDate()).isNull();
     }
 
     @Test
-    @DisplayName("완료 세션이 KST 기준 정확히 31일 전이면 오늘이 재지원일이라 면접 가능(remainingCount 1, D-day 0, 재지원일 null)이다")
-    void getRemainingInterview_CompletedExactly31DaysAgo() {
+    @DisplayName("경계: 소진 세션이 KST 기준 정확히 31일 전이면 오늘이 재지원일이라 비활성이 되어 잔여 4다")
+    void getRemainingInterview_Exactly31DaysAgoIsInactive() {
         // given
         LocalDate interviewDate = LocalDate.now(KST).minusDays(31);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
-                any(Applicant.class), any(Collection.class)))
-                .willReturn(Optional.of(aCompletedSessionOnKstDate(interviewDate)));
+        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
+                .willReturn(List.of(aCompletedSessionOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
 
         // then
-        assertThat(response.totalCount()).isEqualTo(1);
-        assertThat(response.remainingCount()).isEqualTo(1);
+        assertThat(response.totalCount()).isEqualTo(4);
+        assertThat(response.remainingCount()).isEqualTo(4);
         assertThat(response.reapplyDDay()).isZero();
         assertThat(response.reapplyAvailableDate()).isNull();
     }
 
     @Test
-    @DisplayName("완료 세션이 KST 기준 정확히 30일 전이면 재지원일은 내일이라 면접 불가(remainingCount 0, D-day 1, 재지원일 = 세션일+31)이다")
-    void getRemainingInterview_CompletedExactly30DaysAgo() {
+    @DisplayName("경계: 소진 세션이 KST 기준 정확히 30일 전이면 아직 활성이라 잔여 3이다")
+    void getRemainingInterview_Exactly30DaysAgoIsActive() {
         // given
         LocalDate interviewDate = LocalDate.now(KST).minusDays(30);
-        LocalDate expectedReapplyDate = interviewDate.plusDays(31);
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
-                any(Applicant.class), any(Collection.class)))
-                .willReturn(Optional.of(aCompletedSessionOnKstDate(interviewDate)));
+        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
+                .willReturn(List.of(aCompletedSessionOnKstDate(interviewDate)));
 
         // when
         InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
 
         // then
-        assertThat(response.totalCount()).isEqualTo(1);
-        assertThat(response.remainingCount()).isZero();
-        assertThat(response.reapplyDDay()).isEqualTo(1);
-        assertThat(response.reapplyAvailableDate()).isEqualTo(expectedReapplyDate);
+        assertThat(response.totalCount()).isEqualTo(4);
+        assertThat(response.remainingCount()).isEqualTo(3);
+        assertThat(response.reapplyDDay()).isZero();
+        assertThat(response.reapplyAvailableDate()).isNull();
     }
 
     @Test
-    @DisplayName("FINISHED(제출 대기) 세션만 있으면 아직 제출 전이라 완료 세션 없음으로 취급되어 면접 가능(remainingCount 1)이다")
-    void getRemainingInterview_FinishedButNotSubmitted() {
+    @DisplayName("서비스가 리포지토리에 넘기는 소진 상태 집합에 FINISHED(제출 대기)가 포함된다")
+    void getRemainingInterview_ConsumedStatusesContainFinished() {
         // given
-        // 리포지토리 조회는 COMPLETED_STATUSES IN 조건이라 FINISHED 세션은 조회되지 않는다.
-        // 서비스가 넘기는 상태 집합에 FINISHED가 빠지고 제출 상태만 포함됨을 함께 검증한다.
         given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
-        given(interviewSessionRepository.findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
-                any(Applicant.class), any(Collection.class)))
-                .willReturn(Optional.empty());
+        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
+                .willReturn(List.of());
 
         // when
-        InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
+        interviewSessionService.getRemainingInterview(PUBLIC_ID);
 
         // then
-        assertThat(response.totalCount()).isEqualTo(1);
-        assertThat(response.remainingCount()).isEqualTo(1);
-        assertThat(response.reapplyDDay()).isZero();
-        assertThat(response.reapplyAvailableDate()).isNull();
-
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<InterviewSessionStatus>> statusesCaptor =
                 ArgumentCaptor.forClass(Collection.class);
         then(interviewSessionRepository).should()
-                .findFirstByApplicantAndSessionStatusInOrderByCreateTimeDesc(
-                        any(Applicant.class), statusesCaptor.capture());
+                .findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                        any(Applicant.class), statusesCaptor.capture(), any(LocalDateTime.class));
         assertThat(statusesCaptor.getValue())
-                .doesNotContain(InterviewSessionStatus.FINISHED)
                 .contains(
+                        InterviewSessionStatus.FINISHED,
                         InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED,
                         InterviewSessionStatus.TRANSCRIPT_SAVED,
                         InterviewSessionStatus.REPORT_REQUESTED,
-                        InterviewSessionStatus.REPORT_COMPLETED);
+                        InterviewSessionStatus.REPORT_COMPLETED)
+                .doesNotContain(
+                        InterviewSessionStatus.FAILED,
+                        InterviewSessionStatus.STARTED,
+                        InterviewSessionStatus.WAITING_FOR_QUESTION,
+                        InterviewSessionStatus.QUESTION_READY);
+    }
+
+    @Test
+    @DisplayName("활성·비활성 혼합 시 인메모리 필터가 비활성(40일 전)을 걸러내 활성 2개만 집계해 잔여 2다")
+    void getRemainingInterview_MixedActiveAndInactive() {
+        // given
+        // mock은 DB의 createTime 하한 필터를 재현하지 않으므로 today-40을 리스트에 포함시켜
+        // 서비스 인메모리 필터(today.isBefore)가 비활성으로 걸러냄을 검증한다.
+        LocalDate today = LocalDate.now(KST);
+        given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
+        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
+                .willReturn(List.of(
+                        aCompletedSessionOnKstDate(today.minusDays(1)),
+                        aCompletedSessionOnKstDate(today.minusDays(5)),
+                        aCompletedSessionOnKstDate(today.minusDays(40))));
+
+        // when
+        InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
+
+        // then
+        assertThat(response.totalCount()).isEqualTo(4);
+        assertThat(response.remainingCount()).isEqualTo(2);
+        assertThat(response.reapplyDDay()).isZero();
+        assertThat(response.reapplyAvailableDate()).isNull();
+    }
+
+    @Test
+    @DisplayName("활성 세션이 정원(4)을 초과해 5개여도 IndexOutOfBounds 없이 4번째 최근 세션의 재지원일로 D-day를 계산한다")
+    void getRemainingInterview_MoreThanLimitActiveSessions() {
+        // given
+        LocalDate today = LocalDate.now(KST);
+        // 최근순: today-1, today-5, today-10, today-15, today-25 (모두 활성)
+        // 4번째로 최근 = today-15 → 재지원일 = (today-15)+31 = today+16.
+        LocalDate expectedSlot = today.minusDays(15).plusDays(31);
+        given(applicantService.getApplicant(PUBLIC_ID)).willReturn(anApplicant());
+        given(interviewSessionRepository.findByApplicantAndSessionStatusInAndCreateTimeAfterOrderByCreateTimeDesc(
+                any(Applicant.class), any(Collection.class), any(LocalDateTime.class)))
+                .willReturn(List.of(
+                        aCompletedSessionOnKstDate(today.minusDays(1)),
+                        aCompletedSessionOnKstDate(today.minusDays(5)),
+                        aCompletedSessionOnKstDate(today.minusDays(10)),
+                        aCompletedSessionOnKstDate(today.minusDays(15)),
+                        aCompletedSessionOnKstDate(today.minusDays(25))));
+
+        // when
+        InterviewRemainingResponse response = interviewSessionService.getRemainingInterview(PUBLIC_ID);
+
+        // then
+        assertThat(response.totalCount()).isEqualTo(4);
+        assertThat(response.remainingCount()).isZero();
+        assertThat(response.reapplyDDay()).isEqualTo(16);
+        assertThat(response.reapplyAvailableDate()).isEqualTo(expectedSlot);
     }
 }
