@@ -438,7 +438,7 @@ public class ApplicantAuthControllerTest {
         SecurityContextHolder.getContext().setAuthentication(auth);
 
         ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
-                "Pass1234!", "Pass1234!"
+                "OldPass1234!", "Pass1234!", "Pass1234!"
         );
 
         try {
@@ -461,7 +461,7 @@ public class ApplicantAuthControllerTest {
     public void changeMyPassword_unauthorized() throws Exception {
         // given
         ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
-                "Pass1234!", "Pass1234!"
+                "OldPass1234!", "Pass1234!", "Pass1234!"
         );
 
         // when & then
@@ -485,7 +485,7 @@ public class ApplicantAuthControllerTest {
 
         // 영문만, 숫자/특수문자 없음
         ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
-                "onlyletters", "onlyletters"
+                "OldPass1234!", "onlyletters", "onlyletters"
         );
 
         try {

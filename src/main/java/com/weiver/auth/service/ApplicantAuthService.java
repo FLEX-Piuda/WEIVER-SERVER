@@ -193,8 +193,9 @@ public class ApplicantAuthService {
 
     /**
      * 로그인 상태에서의 비밀번호 변경(마이페이지 계정 설정).
-     * 비로그인 재설정(changePassword)과 달리 이메일 인증 없이 현재 세션의 principal로 대상을 특정한다.
-     * 회원가입 비밀번호 설정과 동일하게 세션/토큰을 무효화하지 않고 로그인 세션을 유지한다.
+     * 비로그인 재설정(changePassword)과 달리 이메일 인증 없이 현재 세션의 principal로 대상을 특정하며,
+     * 현재 비밀번호 재인증을 통과한 경우에만 새 비밀번호로 변경한다.
+     * 변경 성공 시 비로그인 재설정(changePassword)과 동일하게 기존 세션/토큰을 무효화하여 전 세션을 강제 로그아웃한다.
      */
     @Transactional
     public void changeMyPassword(String applicantPublicId, ApplicantPasswordUpdateRequestDTO request) {
@@ -202,8 +203,16 @@ public class ApplicantAuthService {
 
         Applicant applicant = applicantProvider.findByPublicId(applicantPublicId);
 
+        if (!passwordEncoder.matches(request.currentPassword(), applicant.getPassword())) {
+            throw new BusinessException(ErrorCode.INVALID_CURRENT_PASSWORD);
+        }
+
         String encoded = passwordEncoder.encode(request.newPassword());
         applicant.updatePassword(encoded);
+
+        // 비밀번호 변경 후 기존 세션/토큰 무효화 (액세스 토큰 버전 증가 + 리프레시 토큰 폐기)
+        tokenVersionRepository.increaseVersion(applicant.getPublicId(), applicant.getRole());
+        refreshTokenRepository.deleteByPublicId(applicant.getPublicId(), applicant.getRole());
     }
 
     @Transactional
