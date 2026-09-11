@@ -877,7 +877,7 @@ public class ApplicantAuthServiceTest {
     // ----------- changeMyPassword -----------
 
     @Test
-    @DisplayName("changeMyPassword: 로그인 상태에서 새 비밀번호를 인코딩해 갱신하고 세션/토큰은 무효화하지 않는다")
+    @DisplayName("changeMyPassword: 현재 비밀번호가 일치하면 새 비밀번호를 인코딩해 갱신하고 기존 세션/토큰을 무효화한다")
     void changeMyPassword_success() {
         // given
         String publicId = "uuid-applicant-9";
@@ -891,17 +891,51 @@ public class ApplicantAuthServiceTest {
         ReflectionTestUtils.setField(applicant, "applicantId", 9L);
 
         ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
-                "Pass1234!", "Pass1234!"
+                "OldPass1234!", "Pass1234!", "Pass1234!"
         );
         given(applicantProvider.findByPublicId(publicId)).willReturn(applicant);
+        given(passwordEncoder.matches("OldPass1234!", "encoded-old")).willReturn(true);
         given(passwordEncoder.encode("Pass1234!")).willReturn("encoded-new");
 
         // when
         applicantAuthService.changeMyPassword(publicId, request);
 
         // then
+        verify(passwordEncoder).matches("OldPass1234!", "encoded-old");
         verify(passwordEncoder).encode("Pass1234!");
         assertThat(applicant.getPassword()).isEqualTo("encoded-new");
+        verify(tokenVersionRepository).increaseVersion(publicId, UserRole.APPLICANT);
+        verify(refreshTokenRepository).deleteByPublicId(publicId, UserRole.APPLICANT);
+    }
+
+    @Test
+    @DisplayName("changeMyPassword: 현재 비밀번호가 일치하지 않으면 INVALID_PASSWORD 예외 (인코딩/갱신 없음)")
+    void changeMyPassword_wrongCurrentPassword_throwsInvalidPassword() {
+        // given
+        String publicId = "uuid-applicant-9";
+        Applicant applicant = Applicant.builder()
+                .email("me@test.com")
+                .password("encoded-old")
+                .role(UserRole.APPLICANT)
+                .publicId(publicId)
+                .status(ApplicantStatus.ACTIVE)
+                .build();
+        ReflectionTestUtils.setField(applicant, "applicantId", 9L);
+
+        ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
+                "WrongOld1!", "Pass1234!", "Pass1234!"
+        );
+        given(applicantProvider.findByPublicId(publicId)).willReturn(applicant);
+        given(passwordEncoder.matches("WrongOld1!", "encoded-old")).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> applicantAuthService.changeMyPassword(publicId, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getCode())
+                .isEqualTo(ErrorCode.INVALID_PASSWORD);
+
+        verify(passwordEncoder, never()).encode(anyString());
+        assertThat(applicant.getPassword()).isEqualTo("encoded-old");
         verify(tokenVersionRepository, never()).increaseVersion(anyString(), any(UserRole.class));
         verify(refreshTokenRepository, never()).deleteByPublicId(anyString(), any(UserRole.class));
     }
@@ -911,7 +945,7 @@ public class ApplicantAuthServiceTest {
     void changeMyPassword_confirmMismatch_throwsPasswordConfirmNotMatch() {
         // given
         ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
-                "Pass1234!", "Different1!"
+                "OldPass1234!", "Pass1234!", "Different1!"
         );
 
         // when & then

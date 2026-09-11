@@ -5,6 +5,10 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
 public record ApplicantPasswordUpdateRequestDTO(
+        @Schema(description = "현재 비밀번호", example = "OldPassword123!")
+        @NotBlank(message = "현재 비밀번호는 필수 입력값입니다.")
+        String currentPassword,
+
         @Schema(description = "새 비밀번호", example = "Password123!")
         @NotBlank(message = "비밀번호는 필수 입력값입니다.")
         @Pattern(
