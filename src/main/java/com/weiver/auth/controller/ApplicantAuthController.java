@@ -228,7 +228,7 @@ public class ApplicantAuthController {
     @Operation(
             summary = "로그인 상태 비밀번호 변경",
             description = "현재 로그인한 구직자가 마이페이지 계정 설정에서 새 비밀번호로 변경합니다.<br>" +
-                    "이메일 인증 없이 현재 세션으로 대상을 특정하며, 변경 후에도 로그인 세션을 유지합니다.<br>" +
+                    "이메일 인증 없이 현재 세션으로 대상을 특정하며, 변경 성공 시 기존 세션/토큰을 무효화하여 재로그인이 필요합니다.<br>" +
                     "Authorization Header에 Bearer Access Token이 필요합니다."
     )
     @SecurityRequirement(name = "bearerAuth")

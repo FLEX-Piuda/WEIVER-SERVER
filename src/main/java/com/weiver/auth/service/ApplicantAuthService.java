@@ -204,7 +204,7 @@ public class ApplicantAuthService {
         Applicant applicant = applicantProvider.findByPublicId(applicantPublicId);
 
         if (!passwordEncoder.matches(request.currentPassword(), applicant.getPassword())) {
-            throw new BusinessException(ErrorCode.INVALID_PASSWORD);
+            throw new BusinessException(ErrorCode.INVALID_CURRENT_PASSWORD);
         }
 
         String encoded = passwordEncoder.encode(request.newPassword());

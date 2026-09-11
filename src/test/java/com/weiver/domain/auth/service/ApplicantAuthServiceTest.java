@@ -909,8 +909,8 @@ public class ApplicantAuthServiceTest {
     }
 
     @Test
-    @DisplayName("changeMyPassword: 현재 비밀번호가 일치하지 않으면 INVALID_PASSWORD 예외 (인코딩/갱신 없음)")
-    void changeMyPassword_wrongCurrentPassword_throwsInvalidPassword() {
+    @DisplayName("changeMyPassword: 현재 비밀번호가 일치하지 않으면 INVALID_CURRENT_PASSWORD 예외 (인코딩/갱신 없음)")
+    void changeMyPassword_wrongCurrentPassword_throwsInvalidCurrentPassword() {
         // given
         String publicId = "uuid-applicant-9";
         Applicant applicant = Applicant.builder()
@@ -932,7 +932,7 @@ public class ApplicantAuthServiceTest {
         assertThatThrownBy(() -> applicantAuthService.changeMyPassword(publicId, request))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((BusinessException) ex).getCode())
-                .isEqualTo(ErrorCode.INVALID_PASSWORD);
+                .isEqualTo(ErrorCode.INVALID_CURRENT_PASSWORD);
 
         verify(passwordEncoder, never()).encode(anyString());
         assertThat(applicant.getPassword()).isEqualTo("encoded-old");
