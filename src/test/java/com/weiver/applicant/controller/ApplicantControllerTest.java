@@ -181,58 +181,6 @@ class ApplicantControllerTest {
     }
 
     @Test
-    @DisplayName("지원자 필수 제출 서류 작성 상태 조회 성공")
-    void getDocumentStatus_Success() throws Exception {
-        // given
-        String publicId = "2222";
-        ApplicantDocumentStatusResponseDTO responseDTO = new ApplicantDocumentStatusResponseDTO(
-                true,
-                false,
-                true
-        );
-
-        given(applicantService.getDocumentStatus(publicId)).willReturn(responseDTO);
-
-        // when, then
-        mockMvc.perform(get("/api/applicants/document-status")
-                        .with(customAuth(publicId))
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andDo(print())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("success"))
-                .andExpect(jsonPath("$.data.resumeCompleted").value(true))
-                .andExpect(jsonPath("$.data.essayCompleted").value(false))
-                .andExpect(jsonPath("$.data.portfolioCompleted").value(true));
-    }
-
-    @Test
-    @DisplayName("엣지 케이스 : 필수 제출 서류 작성 상태 조회 시 Principal이 없으면 UNAUTHORIZED 에러 발생")
-    void getDocumentStatus_WithoutPrincipal_ThrowsUnauthorized() throws Exception {
-        mockMvc.perform(get("/api/applicants/document-status")
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andDo(print())
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    @DisplayName("엣지 케이스 : 필수 제출 서류 작성 상태 조회 시 지원자가 없으면 404 에러 발생")
-    void getDocumentStatus_ApplicantNotFound_ThrowsNotFound() throws Exception {
-        // given
-        String publicId = "not-found";
-
-        given(applicantService.getDocumentStatus(publicId))
-                .willThrow(new BusinessException(ErrorCode.APPLICANT_NOT_FOUND));
-
-        // when, then
-        mockMvc.perform(get("/api/applicants/document-status")
-                        .with(customAuth(publicId))
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andDo(print())
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.errorCode").value("APPLICANT_NOT_FOUND"));
-    }
-
-    @Test
     @DisplayName("프로필 제출 여부 조회 성공")
     void getSubmissionStatus_Success() throws Exception {
         // given

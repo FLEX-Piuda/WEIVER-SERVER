@@ -5,7 +5,6 @@ import com.weiver.applicant.dto.request.post.CertificateRequestDTO;
 import com.weiver.applicant.dto.request.post.EducationRequestDTO;
 import com.weiver.applicant.dto.request.post.WorkExperienceRequestDTO;
 import com.weiver.applicant.dto.request.put.*;
-import com.weiver.applicant.dto.response.ApplicantDocumentStatusResponseDTO;
 import com.weiver.applicant.dto.response.ApplicantInfoResponseDTO;
 import com.weiver.applicant.dto.response.ApplicantSubmissionStatusResponseDTO;
 import com.weiver.applicant.service.*;
@@ -59,20 +58,6 @@ public class ApplicantController {
 
         return ResponseEntity.ok(ApiResponse.success(responseDTO));
 
-    }
-
-    @Operation(
-            summary = "지원자 필수 제출 서류 작성 상태 조회",
-            description = "AI 면접 진행 전 필요한 이력서, 자기소개서, 포트폴리오 작성 완료 여부를 boolean 값으로 반환합니다."
-    )
-    @GetMapping("/document-status")
-    public ResponseEntity<ApiResponse<ApplicantDocumentStatusResponseDTO>> getDocumentStatus(
-            @AuthenticationPrincipal @Parameter(hidden = true) AuthenticatedPrincipal principal) {
-        if(principal == null) throw new BusinessException(ErrorCode.UNAUTHORIZED);
-
-        ApplicantDocumentStatusResponseDTO responseDTO = applicantService.getDocumentStatus(principal.publicId());
-
-        return ResponseEntity.ok(ApiResponse.success(responseDTO));
     }
 
     @Operation(
