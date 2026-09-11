@@ -57,7 +57,10 @@ public class SecurityConfig {
                                         WhiteListConfig.applicantAuthWhitelist().stream(),
                                         WhiteListConfig.companyAuthWhitelist().stream()
                                 ),
-                                Stream.of("/ws", "/ws/**", "/ws-sockjs", "/ws-sockjs/**")
+                                Stream.of(
+                                        "/api/auth/applicants/password",
+                                        "/ws", "/ws/**", "/ws-sockjs", "/ws-sockjs/**"
+                                )
                         ).toArray(String[]::new)
                 )
         );
@@ -97,6 +100,7 @@ public class SecurityConfig {
                                 HttpMethod.POST,
                                 WhiteListConfig.companyAuthWhitelist().toArray(String[]::new)
                         ).permitAll()
+                        .requestMatchers(HttpMethod.PATCH, "/api/auth/applicants/password").permitAll()
 
                         .anyRequest().authenticated()
                 );

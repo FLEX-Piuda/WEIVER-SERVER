@@ -109,6 +109,10 @@ public class Applicant extends BaseTimeEntity {
         this.password = encodedPassword;
     }
 
+    public void updatePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
+
     public void markProfileSyncRequested() {
         this.profileSyncStatus = ProfileSyncStatus.REQUESTED;
     }

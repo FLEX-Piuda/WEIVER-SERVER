@@ -6,6 +6,8 @@ import com.weiver.auth.dto.request.ApplicantAgreementRequestDTO;
 import com.weiver.auth.dto.request.ApplicantEmailSendRequestDTO;
 import com.weiver.auth.dto.request.ApplicantEmailVerifyRequestDTO;
 import com.weiver.auth.dto.request.ApplicantLoginRequestDTO;
+import com.weiver.auth.dto.request.ApplicantPasswordChangeRequestDTO;
+import com.weiver.auth.dto.request.ApplicantPasswordUpdateRequestDTO;
 import com.weiver.auth.dto.request.ApplicantSignupCompleteRequestDTO;
 import com.weiver.auth.dto.request.ApplicantSignupInitRequestDTO;
 import com.weiver.auth.dto.response.ApplicantEmailVerifyResponseDTO;
@@ -38,9 +40,12 @@ import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -298,6 +303,198 @@ public class ApplicantAuthControllerTest {
                     .andExpect(jsonPath("$.message").value("회원탈퇴에 성공했습니다."));
 
             verify(applicantAuthService).withdraw(publicId);
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("비밀번호 재설정 인증번호 전송 성공 시 200 응답")
+    public void sendPasswordResetCode_success() throws Exception {
+        // given
+        ApplicantEmailSendRequestDTO request = new ApplicantEmailSendRequestDTO("user@test.com");
+
+        // when & then
+        mockMvc.perform(post("/api/auth/applicants/password/email/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("비밀번호 재설정 인증번호 전송에 성공했습니다."));
+
+        verify(applicantAuthService).sendPasswordResetCode(any(ApplicantEmailSendRequestDTO.class));
+    }
+
+    @Test
+    @DisplayName("엣지 케이스: 비밀번호 재설정 인증번호 전송 시 이메일 형식 오류 -> 400 Bad Request")
+    public void sendPasswordResetCode_invalidEmail() throws Exception {
+        // given
+        ApplicantEmailSendRequestDTO request = new ApplicantEmailSendRequestDTO("not-email");
+
+        // when & then
+        mockMvc.perform(post("/api/auth/applicants/password/email/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("비밀번호 재설정 인증번호 확인 성공 시 verificationToken 반환")
+    public void verifyPasswordResetCode_success() throws Exception {
+        // given
+        ApplicantEmailVerifyRequestDTO request = new ApplicantEmailVerifyRequestDTO("user@test.com", "123456");
+        when(applicantAuthService.verifyEmailCode(any()))
+                .thenReturn(new ApplicantEmailVerifyResponseDTO("verification-token"));
+
+        // when & then
+        mockMvc.perform(post("/api/auth/applicants/password/email/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.verificationToken").value("verification-token"))
+                .andExpect(jsonPath("$.message").value("비밀번호 재설정 인증번호 확인에 성공했습니다."));
+    }
+
+    @Test
+    @DisplayName("엣지 케이스: 비밀번호 재설정 인증번호 확인 시 인증번호 만료 -> 400 VERIFICATION_CODE_EXPIRED")
+    public void verifyPasswordResetCode_expired() throws Exception {
+        // given
+        ApplicantEmailVerifyRequestDTO request = new ApplicantEmailVerifyRequestDTO("user@test.com", "123456");
+        when(applicantAuthService.verifyEmailCode(any()))
+                .thenThrow(new BusinessException(ErrorCode.VERIFICATION_CODE_EXPIRED));
+
+        // when & then
+        mockMvc.perform(post("/api/auth/applicants/password/email/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VERIFICATION_CODE_EXPIRED"));
+    }
+
+    @Test
+    @DisplayName("비밀번호 변경 성공 시 200 응답")
+    public void changePassword_success() throws Exception {
+        // given
+        ApplicantPasswordChangeRequestDTO request = new ApplicantPasswordChangeRequestDTO(
+                "user@test.com", "verification-token", "Pass1234!", "Pass1234!"
+        );
+
+        // when & then
+        mockMvc.perform(patch("/api/auth/applicants/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("비밀번호 변경에 성공했습니다."));
+
+        verify(applicantAuthService).changePassword(any(ApplicantPasswordChangeRequestDTO.class));
+    }
+
+    @Test
+    @DisplayName("엣지 케이스: 비밀번호 변경 시 비밀번호 복잡도 미달 -> 400 Bad Request")
+    public void changePassword_weakPassword() throws Exception {
+        // given - 영문만, 숫자/특수문자 없음
+        ApplicantPasswordChangeRequestDTO request = new ApplicantPasswordChangeRequestDTO(
+                "user@test.com", "verification-token", "onlyletters", "onlyletters"
+        );
+
+        // when & then
+        mockMvc.perform(patch("/api/auth/applicants/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("엣지 케이스: 비밀번호 변경 시 이메일 인증 토큰이 유효하지 않으면 403 EMAIL_NOT_VERIFIED")
+    public void changePassword_emailNotVerified() throws Exception {
+        // given
+        ApplicantPasswordChangeRequestDTO request = new ApplicantPasswordChangeRequestDTO(
+                "user@test.com", "invalid-token", "Pass1234!", "Pass1234!"
+        );
+        doThrow(new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED))
+                .when(applicantAuthService).changePassword(any());
+
+        // when & then
+        mockMvc.perform(patch("/api/auth/applicants/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("EMAIL_NOT_VERIFIED"));
+    }
+
+    @Test
+    @DisplayName("로그인 상태 비밀번호 변경 성공 시 200 응답")
+    public void changeMyPassword_success() throws Exception {
+        // given
+        String publicId = "uuid-applicant-1";
+        AuthenticatedPrincipal principal = new AuthenticatedPrincipal(publicId, UserRole.APPLICANT);
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                principal, null, List.of(new SimpleGrantedAuthority("ROLE_APPLICANT"))
+        );
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
+                "Pass1234!", "Pass1234!"
+        );
+
+        try {
+            // when & then
+            mockMvc.perform(patch("/api/auth/applicants/me/password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.message").value("비밀번호 변경에 성공했습니다."));
+
+            verify(applicantAuthService).changeMyPassword(eq(publicId), any(ApplicantPasswordUpdateRequestDTO.class));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("엣지 케이스: 로그인 상태 비밀번호 변경 시 미인증이면 401 UNAUTHORIZED")
+    public void changeMyPassword_unauthorized() throws Exception {
+        // given
+        ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
+                "Pass1234!", "Pass1234!"
+        );
+
+        // when & then
+        mockMvc.perform(patch("/api/auth/applicants/me/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("엣지 케이스: 로그인 상태 비밀번호 변경 시 비밀번호 복잡도 미달 -> 400 VALIDATION_FAILED")
+    public void changeMyPassword_weakPassword() throws Exception {
+        // given
+        String publicId = "uuid-applicant-1";
+        AuthenticatedPrincipal principal = new AuthenticatedPrincipal(publicId, UserRole.APPLICANT);
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                principal, null, List.of(new SimpleGrantedAuthority("ROLE_APPLICANT"))
+        );
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        // 영문만, 숫자/특수문자 없음
+        ApplicantPasswordUpdateRequestDTO request = new ApplicantPasswordUpdateRequestDTO(
+                "onlyletters", "onlyletters"
+        );
+
+        try {
+            // when & then
+            mockMvc.perform(patch("/api/auth/applicants/me/password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"));
         } finally {
             SecurityContextHolder.clearContext();
         }

@@ -3,6 +3,8 @@ package com.weiver.auth.controller;
 import com.weiver.auth.dto.request.ApplicantEmailSendRequestDTO;
 import com.weiver.auth.dto.request.ApplicantEmailVerifyRequestDTO;
 import com.weiver.auth.dto.request.ApplicantLoginRequestDTO;
+import com.weiver.auth.dto.request.ApplicantPasswordChangeRequestDTO;
+import com.weiver.auth.dto.request.ApplicantPasswordUpdateRequestDTO;
 import com.weiver.auth.dto.request.ApplicantSignupCompleteRequestDTO;
 import com.weiver.auth.dto.request.ApplicantSignupInitRequestDTO;
 import com.weiver.auth.dto.response.ApplicantEmailVerifyResponseDTO;
@@ -173,5 +175,76 @@ public class ApplicantAuthController {
         );
 
         return ResponseEntity.ok(ApiResponse.success(200, null, "회원탈퇴에 성공했습니다."));
+    }
+
+    @Operation(
+            summary = "비밀번호 재설정 인증번호 전송",
+            description = "비밀번호 찾기/변경을 위해 인증번호를 회원의 이메일로 전송합니다.<br>" +
+                    "가입되지 않은 이메일도 이메일 열거 방지를 위해 성공 응답을 반환하되 실제 코드는 발송하지 않습니다."
+    )
+    @PostMapping("/password/email/send")
+    public ResponseEntity<ApiResponse<Void>> sendPasswordResetCode(
+            @RequestBody
+            @Valid
+            ApplicantEmailSendRequestDTO requestDTO
+    ) {
+        applicantAuthService.sendPasswordResetCode(requestDTO);
+
+        return ResponseEntity.ok(ApiResponse.success(200, null, "비밀번호 재설정 인증번호 전송에 성공했습니다."));
+    }
+
+    @Operation(
+            summary = "비밀번호 재설정 인증번호 검증",
+            description = "이메일로 전송된 비밀번호 재설정 인증번호를 검증합니다.<br>" +
+                    "인증번호가 일치하면 비밀번호 변경에 사용할 verificationToken을 반환합니다."
+    )
+    @PostMapping("/password/email/verify")
+    public ResponseEntity<ApiResponse<ApplicantEmailVerifyResponseDTO>> verifyPasswordResetCode(
+            @RequestBody
+            @Valid
+            ApplicantEmailVerifyRequestDTO requestDTO
+    ) {
+        ApplicantEmailVerifyResponseDTO responseDTO = applicantAuthService.verifyEmailCode(requestDTO);
+
+        return ResponseEntity.ok(ApiResponse.success(200, responseDTO, "비밀번호 재설정 인증번호 확인에 성공했습니다."));
+    }
+
+    @Operation(
+            summary = "비밀번호 변경",
+            description = "이메일 인증 토큰을 검증한 뒤 구직자의 비밀번호를 변경합니다.<br>" +
+                    "비밀번호 찾기와 로그인 후 비밀번호 변경에 공용으로 사용됩니다."
+    )
+    @PatchMapping("/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @RequestBody
+            @Valid
+            ApplicantPasswordChangeRequestDTO requestDTO
+    ) {
+        applicantAuthService.changePassword(requestDTO);
+
+        return ResponseEntity.ok(ApiResponse.success(200, null, "비밀번호 변경에 성공했습니다."));
+    }
+
+    @Operation(
+            summary = "로그인 상태 비밀번호 변경",
+            description = "현재 로그인한 구직자가 마이페이지 계정 설정에서 새 비밀번호로 변경합니다.<br>" +
+                    "이메일 인증 없이 현재 세션으로 대상을 특정하며, 변경 후에도 로그인 세션을 유지합니다.<br>" +
+                    "Authorization Header에 Bearer Access Token이 필요합니다."
+    )
+    @SecurityRequirement(name = "bearerAuth")
+    @PatchMapping("/me/password")
+    public ResponseEntity<ApiResponse<Void>> changeMyPassword(
+            @Parameter(hidden = true)
+            @AuthenticationPrincipal AuthenticatedPrincipal principal,
+
+            @RequestBody
+            @Valid
+            ApplicantPasswordUpdateRequestDTO requestDTO
+    ) {
+        if (principal == null) throw new BusinessException(ErrorCode.UNAUTHORIZED);
+
+        applicantAuthService.changeMyPassword(principal.publicId(), requestDTO);
+
+        return ResponseEntity.ok(ApiResponse.success(200, null, "비밀번호 변경에 성공했습니다."));
     }
 }
