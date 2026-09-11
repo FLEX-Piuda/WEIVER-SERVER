@@ -10,7 +10,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseCookie;
@@ -63,17 +62,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                         request.getRequestURI(),
                         List.of()
                 ));
-    }
-
-    @ExceptionHandler(OptimisticLockingFailureException.class)
-    public ResponseEntity<ErrorResponse> handleOptimisticLock(
-            OptimisticLockingFailureException ex,
-            HttpServletRequest request) {
-
-        // Sentry 전송 제외: 동시 요청 충돌은 클라이언트가 재시도로 해소 가능하므로 WARN 레벨로 기록한다.
-        log.warn("[OptimisticLockConflict] message={}, path={}", ex.getMessage(), request.getRequestURI());
-
-        return toResponse(ErrorCode.CONCURRENT_REQUEST_CONFLICT, request, List.of());
     }
 
     @ExceptionHandler(Exception.class)

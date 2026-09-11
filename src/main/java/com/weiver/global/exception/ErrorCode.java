@@ -79,8 +79,6 @@ public enum ErrorCode {
     INTERVIEW_ALREADY_COMPLETED("INTERVIEW_ALREADY_COMPLETED", HttpStatus.CONFLICT, "이미 완료된 면접입니다."),
     APPLICANT_ANALYSIS_NOT_COMPLETED("APPLICANT_ANALYSIS_NOT_COMPLETED", HttpStatus.CONFLICT, "지원자 분석이 완료되지 않았습니다."),
     INVALID_INTERVIEW_TYPE("INVALID_INTERVIEW_TYPE", HttpStatus.BAD_REQUEST, "잘못된 인터뷰 타입입니다."),
-    INTERVIEW_NOT_FINISHED("INTERVIEW_NOT_FINISHED", HttpStatus.BAD_REQUEST, "아직 종료되지 않은 면접입니다."),
-    INTERVIEW_FAILED("INTERVIEW_FAILED", HttpStatus.CONFLICT, "실패한 면접은 제출할 수 없습니다. 다시 응시해주세요."),
 
     // ===================== MATCHING =====================
     MATCH_NOT_FOUND("MATCH_NOT_FOUND", HttpStatus.NOT_FOUND, "매칭 결과를 찾을 수 없습니다."),
@@ -90,7 +88,6 @@ public enum ErrorCode {
 
     // ===================== SERVER =====================
     BAD_REQUEST("BAD_REQUEST", HttpStatus.BAD_REQUEST, "잘못된 요청입니다."),
-    CONCURRENT_REQUEST_CONFLICT("CONCURRENT_REQUEST_CONFLICT", HttpStatus.CONFLICT, "다른 요청과 동시에 처리되어 충돌이 발생했습니다. 잠시 후 다시 시도해 주세요."),
     INTERNAL_SERVER_ERROR("INTERNAL_SERVER_ERROR", HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
     FAIL_DELETE_FILE("FAIL_DELETE_FILE", HttpStatus.INTERNAL_SERVER_ERROR, "S3 파일 삭제 실패");
     public final String code;

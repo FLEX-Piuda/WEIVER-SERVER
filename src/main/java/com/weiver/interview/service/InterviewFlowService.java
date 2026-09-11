@@ -114,30 +114,6 @@ public class InterviewFlowService {
     }
 
     /**
-     * 종료 대기(FINISHED) 상태의 면접을 수동 제출한다("면접 결과 제출하기").
-     * transcript 저장 요청을 발행하고 TRANSCRIPT_SAVE_REQUESTED로 전이한다.
-     */
-    public void submitInterview(UUID interviewSessionId, String applicantPublicId) {
-        InterviewSession session = getSessionForApplicant(interviewSessionId, applicantPublicId);
-        InterviewSessionStatus status = session.getSessionStatus();
-
-        // 실패(재처리 초과/복구 불가) 면접은 제출 불가(재응시 필요)
-        if (status == InterviewSessionStatus.FAILED) {
-            throw new BusinessException(ErrorCode.INTERVIEW_FAILED);
-        }
-        // 이미 제출된(종료 처리 진행/완료) 면접이면 재제출 불가
-        if (isSubmitted(status)) {
-            throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED);
-        }
-        // 아직 면접 Q&A가 끝나지 않았으면(진행 중) 제출 불가
-        if (status != InterviewSessionStatus.FINISHED) {
-            throw new BusinessException(ErrorCode.INTERVIEW_NOT_FINISHED);
-        }
-
-        requestTranscriptSave(session);
-    }
-
-    /**
      * AI가 생성한 질문을 transcript에 멱등 append하고, 종료 질문이면 transcript 저장 요청으로 이어간다.
      */
     public void handleQuestionGenerated(InterviewQuestionGeneratedData data) {
@@ -156,8 +132,9 @@ public class InterviewFlowService {
         }
 
         if (isEndQuestion(data.nextQuestionCode())) {
-            // 면접 Q&A 종료 표시까지만. 실제 제출(transcript 저장 요청)은 사용자가 submitInterview로 수동 트리거한다.
             session.updateStatus(InterviewSessionStatus.FINISHED);
+            publishTranscriptSaveRequested(session);
+            session.updateStatus(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
             sendInterviewMessage(
                     session,
                     InterviewWebSocketMessageResponse.interviewFinished(session.getInterviewSessionId())
@@ -230,14 +207,6 @@ public class InterviewFlowService {
                 );
 
         session.updateStatus(InterviewSessionStatus.REPORT_COMPLETED);
-    }
-
-    /**
-     * 종료 대기(FINISHED) 면접의 제출을 처리한다: transcript 저장 요청 발행 → TRANSCRIPT_SAVE_REQUESTED로 전이.
-     */
-    private void requestTranscriptSave(InterviewSession session) {
-        publishTranscriptSaveRequested(session);
-        session.updateStatus(InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED);
     }
 
     /**
@@ -463,16 +432,6 @@ public class InterviewFlowService {
                 || status == InterviewSessionStatus.REPORT_REQUESTED
                 || status == InterviewSessionStatus.REPORT_COMPLETED
                 || status == InterviewSessionStatus.FAILED;
-    }
-
-    /**
-     * 이미 제출된(종료 처리 진행/완료) 상태 판정. FINISHED(제출 대기)와 FAILED(실패)는 포함하지 않는다.
-     */
-    private boolean isSubmitted(InterviewSessionStatus status) {
-        return status == InterviewSessionStatus.TRANSCRIPT_SAVE_REQUESTED
-                || status == InterviewSessionStatus.TRANSCRIPT_SAVED
-                || status == InterviewSessionStatus.REPORT_REQUESTED
-                || status == InterviewSessionStatus.REPORT_COMPLETED;
     }
 
     private boolean isTranscriptAlreadyProcessed(InterviewSessionStatus status) {
